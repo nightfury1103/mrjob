@@ -81,7 +81,7 @@ def _unarchive_cmd(path):
         if path.endswith(ext):
             return unarchive_cmd
 
-    raise KeyError('unknown archive type: %s' % path)
+    raise KeyError(f'unknown archive type: {path}')
 
 
 class MRJobBinRunner(MRJobRunner):
@@ -198,11 +198,10 @@ class MRJobBinRunner(MRJobRunner):
 
         if local and sys.executable:
             return [sys.executable]
+        if PY2:
+            return ['pypy'] if is_pypy else ['python2.7']
         else:
-            if PY2:
-                return ['pypy'] if is_pypy else ['python2.7']
-            else:
-                return ['pypy3'] if is_pypy else ['python3']
+            return ['pypy3'] if is_pypy else ['python3']
 
     ### running MRJob scripts ###
 
@@ -228,19 +227,13 @@ class MRJobBinRunner(MRJobRunner):
             cmd = step[mrc]['command']
 
             # never wrap custom hadoop streaming commands in bash
-            if isinstance(cmd, string_types):
-                return shlex_split(cmd)
-            else:
-                return cmd
-
+            return shlex_split(cmd) if isinstance(cmd, string_types) else cmd
         elif step[mrc]['type'] == 'script':
             script_args = self._script_args_for_step(
                 step_num, mrc, input_manifest=step.get('input_manifest'))
 
             if 'pre_filter' in step[mrc]:
-                return self._sh_wrap(
-                    '%s | %s' % (step[mrc]['pre_filter'],
-                                 cmd_line(script_args)))
+                return self._sh_wrap(f"{step[mrc]['pre_filter']} | {cmd_line(script_args)}")
             else:
                 return script_args
         else:
@@ -257,10 +250,7 @@ class MRJobBinRunner(MRJobRunner):
             # Hadoop Streaming finds confusing.
             return _hadoop_cmd_line(self._substep_args(step_num, mrc))
         else:
-            if mrc == 'mapper':
-                return 'cat'
-            else:
-                return None
+            return 'cat' if mrc == 'mapper' else None
 
     def _hadoop_args_for_step(self, step_num):
         """Build a list of extra arguments to the hadoop binary.
@@ -281,16 +271,12 @@ class MRJobBinRunner(MRJobRunner):
         # args (see #1332).
         args.extend(self._opts.get('hadoop_extra_args', ()))
 
-        # partitioner
-        partitioner = self._partitioner or self._sort_values_partitioner()
-        if partitioner:
+        if partitioner := self._partitioner or self._sort_values_partitioner():
             args.extend(['-partitioner', partitioner])
 
         # cmdenv
         for key, value in sorted(self._cmdenv().items()):
-            args.append('-cmdenv')
-            args.append('%s=%s' % (key, value))
-
+            args.extend(('-cmdenv', f'{key}={value}'))
         # hadoop_input_format
         if step_num == 0:
             if self._uses_input_manifest():
@@ -322,8 +308,13 @@ class MRJobBinRunner(MRJobRunner):
         #
         # might want to just integrate this into _hadoop_args_for_step?
         if not reducer:
-            args.extend(['-D', ('%s=0' % translate_jobconf(
-                'mapreduce.job.reduces', self.get_hadoop_version()))])
+            args.extend(
+                [
+                    '-D',
+                    f"{translate_jobconf('mapreduce.job.reduces', self.get_hadoop_version())}=0",
+                ]
+            )
+
 
         # Add extra hadoop args first as hadoop args could be a hadoop
         # specific argument which must come before job
@@ -334,21 +325,11 @@ class MRJobBinRunner(MRJobRunner):
         for input_uri in self._step_input_uris(step_num):
             args.extend(['-input', input_uri])
 
-        # set up output
-        args.append('-output')
-        args.append(self._step_output_uri(step_num))
-
-        args.append('-mapper')
-        args.append(mapper)
-
+        args.extend(('-output', self._step_output_uri(step_num), '-mapper', mapper))
         if combiner:
-            args.append('-combiner')
-            args.append(combiner)
-
+            args.extend(('-combiner', combiner))
         if reducer:
-            args.append('-reducer')
-            args.append(reducer)
-
+            args.extend(('-reducer', reducer))
         return args
 
     def _hadoop_streaming_commands(self, step_num):
@@ -363,16 +344,14 @@ class MRJobBinRunner(MRJobRunner):
         subcommand."""
         args = []
 
-        # libjars (#198)
-        libjar_paths = self._libjar_paths()
-        if libjar_paths:
+        if libjar_paths := self._libjar_paths():
             args.extend(['-libjars', ','.join(libjar_paths)])
 
         # jobconf (-D)
         jobconf = self._jobconf_for_step(step_num)
 
         for key, value in sorted(jobconf.items()):
-            args.extend(['-D', '%s=%s' % (key, value)])
+            args.extend(['-D', f'{key}={value}'])
 
         return args
 
@@ -448,8 +427,7 @@ class MRJobBinRunner(MRJobRunner):
                 self._spark_executors_have_own_wd() and
                 not self._spark_python_wrapper_path):
 
-            pyspark_setup = self._pyspark_setup()
-            if pyspark_setup:
+            if pyspark_setup := self._pyspark_setup():
                 self._spark_python_wrapper_path = self._write_setup_script(
                     pyspark_setup,
                     'python-wrapper.sh', 'Spark Python wrapper script',
@@ -534,8 +512,10 @@ class MRJobBinRunner(MRJobRunner):
                            # filter out MacFuse resource forks
                            filename.startswith('._'))
 
-            log.debug('archiving %s -> %s as %s' % (
-                mrjob_dir, zip_path, os.path.join('mrjob', '')))
+            log.debug(
+                f"archiving {mrjob_dir} -> {zip_path} as {os.path.join('mrjob', '')}"
+            )
+
             zip_dir(mrjob_dir, zip_path, filter=filter_path, prefix='mrjob')
 
             self._mrjob_zip_path = zip_path
@@ -568,16 +548,12 @@ class MRJobBinRunner(MRJobRunner):
             if len(shebang_bin) > 2:
                 # Linux limits shebang to one binary and one arg
                 shebang_bin = shebang_bin[:2]
-                log.warning('Limiting shebang to two arguments:'
-                            '#!%s' % cmd_line(shebang_bin))
+                log.warning(f'Limiting shebang to two arguments:#!{cmd_line(shebang_bin)}')
 
-            lines.append('#!%s' % cmd_line(shebang_bin))
+            lines.append(f'#!{cmd_line(shebang_bin)}')
 
-        # hook for 'set -e', etc.
-        pre_commands = self._sh_pre_commands()
-        if pre_commands:
-            for cmd in pre_commands:
-                lines.append(cmd)
+        if pre_commands := self._sh_pre_commands():
+            lines.extend(iter(pre_commands))
             lines.append('')
 
         if setup:
@@ -602,29 +578,20 @@ class MRJobBinRunner(MRJobRunner):
         """Write setup script content to obtain a file lock, run setup
         commands in a way that doesn't perturb the script, and then
         release the lock and return to the original working directory."""
-        lines = []
+        lines = [
+            '# store $PWD',
+            '__mrjob_PWD=$PWD',
+            '',
+            '# obtain exclusive file lock',
+            f'exec 9>/tmp/wrapper.lock.{self._job_key}',
+            "%s -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'"
+            % cmd_line(self._python_bin()),
+            '',
+            '# setup commands',
+            '{',
+        ]
 
-        lines.append('# store $PWD')
-        lines.append('__mrjob_PWD=$PWD')
-        lines.append('')
 
-        lines.append('# obtain exclusive file lock')
-        # Basically, we're going to tie file descriptor 9 to our lockfile,
-        # use a subprocess to obtain a lock (which we somehow inherit too),
-        # and then release the lock by closing the file descriptor.
-        # File descriptors 10 and higher are used internally by the shell,
-        # so 9 is as out-of-the-way as we can get.
-        lines.append('exec 9>/tmp/wrapper.lock.%s' % self._job_key)
-        # would use flock(1), but it's not always available
-        lines.append("%s -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'" %
-                     cmd_line(self._python_bin()))
-        lines.append('')
-
-        lines.append('# setup commands')
-        # group setup commands so we can redirect their input/output (see
-        # below). Don't use parens; this would invoke a subshell, which would
-        # keep us from exporting environment variables to the task.
-        lines.append('{')
         for cmd in setup:
             # reconstruct the command line, substituting $__mrjob_PWD/<name>
             # for path dicts
@@ -638,17 +605,17 @@ class MRJobBinRunner(MRJobRunner):
                     # it's raw script
                     line += token
             lines.append(line)
-        # redirect setup commands' input/output so they don't interfere
-        # with the task (see Issue #803).
-        lines.append('} 0</dev/null 1>&2')
-        lines.append('')
-
-        lines.append('# release exclusive file lock')
-        lines.append('exec 9>&-')
-        lines.append('')
-
-        lines.append('# run task from the original working directory')
-        lines.append('cd $__mrjob_PWD')
+        lines.extend(
+            (
+                '} 0</dev/null 1>&2',
+                '',
+                '# release exclusive file lock',
+                'exec 9>&-',
+                '',
+                '# run task from the original working directory',
+                'cd $__mrjob_PWD',
+            )
+        )
 
         return lines
 
@@ -656,80 +623,75 @@ class MRJobBinRunner(MRJobRunner):
         """write the part of the manifest setup script after setup, that
         downloads the input file, runs the script, and then deletes
         the file."""
-        lines = []
+        lines = [
+            '{',
+            '  # read URI of input file from stdin',
+            '  INPUT_URI=$(cut -f 2)',
+            '',
+            '  # pick file extension',
+            "  FILE_EXT=$(basename $INPUT_URI | sed -e 's/^[^.]*//')",
+            '',
+            '  # pick filename to download to',
+            '  INPUT_PATH=$(mktemp ./input-XXXXXXXXXX$FILE_EXT)',
+            '  rm $INPUT_PATH',
+            '',
+            '  # download the input file',
+            '  case $INPUT_URI in',
+        ]
 
-        lines.append('{')
 
-        # read URI from stdin
-        lines.append('  # read URI of input file from stdin')
-        lines.append('  INPUT_URI=$(cut -f 2)')
-        lines.append('')
-
-        # pick file extension (e.g. ".warc.gz")
-        lines.append('  # pick file extension')
-        lines.append("  FILE_EXT=$(basename $INPUT_URI | sed -e 's/^[^.]*//')")
-        lines.append('')
-
-        # pick a unique name in the current directory to download the file to
-        lines.append('  # pick filename to download to')
-        lines.append('  INPUT_PATH=$(mktemp ./input-XXXXXXXXXX$FILE_EXT)')
-        lines.append('  rm $INPUT_PATH')
-        lines.append('')
-
-        # download the file (using different commands depending on the path)
-        lines.append('  # download the input file')
-        lines.append('  case $INPUT_URI in')
         download_cmds = (
             list(self._manifest_download_commands()) + [('*', 'cp')])
         for glob, cmd in download_cmds:
-            lines.append('    %s)' % glob)
-            lines.append('      %s $INPUT_URI $INPUT_PATH' % cmd)
-            lines.append('      ;;')
-        lines.append('  esac')
-        lines.append('')
+            lines.extend(
+                (f'    {glob})', f'      {cmd} $INPUT_URI $INPUT_PATH', '      ;;')
+            )
 
-        # unpack .bz2 and .gz files
-        lines.append('  # if input file is compressed, unpack it')
-        lines.append('  case $INPUT_PATH in')
+        lines.extend(
+            (
+                '  esac',
+                '',
+                '  # if input file is compressed, unpack it',
+                '  case $INPUT_PATH in',
+            )
+        )
+
         for ext, cmd in self._manifest_uncompress_commands():
-            lines.append('    *.%s)' % ext)
-            lines.append('      %s $INPUT_PATH' % cmd)
-            lines.append("      INPUT_PATH="
-                         r"$(echo $INPUT_PATH | sed -e 's/\.%s$//')" % ext)
-            lines.append('      ;;')
-        lines.append('  esac')
-        lines.append('} 1>&2')
-        lines.append('')
+            lines.extend(
+                (
+                    f'    *.{ext})',
+                    f'      {cmd} $INPUT_PATH',
+                    "      INPUT_PATH="
+                    r"$(echo $INPUT_PATH | sed -e 's/\.%s$//')" % ext,
+                    '      ;;',
+                )
+            )
 
-        # don't exit if script fails
-        lines.append('# run our mrjob script')
-        lines.append('set +e')
-        # pass input path and URI to script
-        lines.append('"$@" $INPUT_PATH $INPUT_URI')
-        lines.append('')
-
-        # save return code, turn off echo
-        lines.append('# if script fails, print input URI before exiting')
-        lines.append('{ RETURNCODE=$?; set +x; } 1>&2 2>/dev/null')
-        lines.append('')
-
-        lines.append('{')
-
-        # handle errors
-        lines.append('  if [ $RETURNCODE -ne 0 ]')
-        lines.append('  then')
-        lines.append('    echo')
-        lines.append('    echo "while reading input from $INPUT_URI"')
-        lines.append('  fi')
-        lines.append('')
-
-        # clean up input
-        lines.append('  rm $INPUT_PATH')
-        lines.append('} 1>&2')
-        lines.append('')
-
-        # exit with correct status
-        lines.append('exit $RETURNCODE')
+        lines.extend(
+            (
+                '  esac',
+                '} 1>&2',
+                '',
+                '# run our mrjob script',
+                'set +e',
+                '"$@" $INPUT_PATH $INPUT_URI',
+                '',
+                '# if script fails, print input URI before exiting',
+                '{ RETURNCODE=$?; set +x; } 1>&2 2>/dev/null',
+                '',
+                '{',
+                '  if [ $RETURNCODE -ne 0 ]',
+                '  then',
+                '    echo',
+                '    echo "while reading input from $INPUT_URI"',
+                '  fi',
+                '',
+                '  rm $INPUT_PATH',
+                '} 1>&2',
+                '',
+                'exit $RETURNCODE',
+            )
+        )
 
         return lines
 
@@ -810,7 +772,7 @@ class MRJobBinRunner(MRJobRunner):
         :return: tuple of the subprocess's return code and a
                  step interpretation dictionary
         """
-        log.debug('> %s' % cmd_line(spark_submit_args))
+        log.debug(f'> {cmd_line(spark_submit_args)}')
         log.debug('  with environment: %r' % sorted(env.items()))
 
         # these should always be set, but just in case
@@ -883,22 +845,16 @@ class MRJobBinRunner(MRJobRunner):
         to find spark-submit (e.g. on cloud services).
         """
         for path in unique(self._spark_submit_bin_dirs()):
-            log.info('Looking for spark-submit binary in %s...' % (
-                path or '$PATH'))
+            log.info(f"Looking for spark-submit binary in {path or '$PATH'}...")
 
-            spark_submit_bin = which('spark-submit', path=path)
-
-            if spark_submit_bin:
-                log.info('Found spark-submit binary: %s' % spark_submit_bin)
+            if spark_submit_bin := which('spark-submit', path=path):
+                log.info(f'Found spark-submit binary: {spark_submit_bin}')
                 return [spark_submit_bin]
-        else:
-            log.info("Falling back to 'spark-submit'")
-            return ['spark-submit']
+        log.info("Falling back to 'spark-submit'")
+        return ['spark-submit']
 
     def _spark_submit_bin_dirs(self):
-        # $SPARK_HOME
-        spark_home = os.environ.get('SPARK_HOME')
-        if spark_home:
+        if spark_home := os.environ.get('SPARK_HOME'):
             yield os.path.join(spark_home, 'bin')
 
         yield None  # use $PATH
@@ -923,22 +879,20 @@ class MRJobBinRunner(MRJobRunner):
         # that we can always override these manually
         jobconf = {}
         for key, value in self._spark_cmdenv(step_num).items():
-            jobconf['spark.executorEnv.%s' % key] = value
+            jobconf[f'spark.executorEnv.{key}'] = value
             if self._spark_master() == 'yarn':  # YARN only, see #1919
-                jobconf['spark.yarn.appMasterEnv.%s' % key] = value
+                jobconf[f'spark.yarn.appMasterEnv.{key}'] = value
 
-        jobconf.update(self._jobconf_for_step(step_num))
+        jobconf |= self._jobconf_for_step(step_num)
 
         for key, value in sorted(jobconf.items()):
-            args.extend(['--conf', '%s=%s' % (key, value)])
+            args.extend(['--conf', f'{key}={value}'])
 
         # add --class (JAR steps)
         if step.get('main_class'):
             args.extend(['--class', step['main_class']])
 
-        # add --jars, if any
-        libjar_paths = self._libjar_paths()
-        if libjar_paths:
+        if libjar_paths := self._libjar_paths():
             args.extend(['--jars', ','.join(libjar_paths)])
 
         # spark-submit treats --master and --deploy-mode as aliases for
@@ -983,15 +937,18 @@ class MRJobBinRunner(MRJobRunner):
         return args
 
     def _spark_upload_args(self):
-        if not self._spark_executors_have_own_wd():
-            # don't bother, there's no working dir to upload to
-            return []
-
-        return self._upload_args_helper(
-            '--files', None,
-            '--archives', None,
-            always_use_hash=False,
-            emulate_archives=self._emulate_archives_on_spark())
+        return (
+            self._upload_args_helper(
+                '--files',
+                None,
+                '--archives',
+                None,
+                always_use_hash=False,
+                emulate_archives=self._emulate_archives_on_spark(),
+            )
+            if self._spark_executors_have_own_wd()
+            else []
+        )
 
     def _spark_script_path(self, step_num):
         """The path of the spark script or JAR, used by
@@ -1025,11 +982,11 @@ class MRJobBinRunner(MRJobRunner):
         if self._step_type_uses_pyspark(step['type']):
             driver_python = cmd_line(self._python_bin())
 
-            if self._spark_python_wrapper_path:
-                executor_python = './%s' % self._working_dir_mgr.name(
-                    'file', self._spark_python_wrapper_path)
-            else:
-                executor_python = cmd_line(self._task_python_bin())
+            executor_python = (
+                f"./{self._working_dir_mgr.name('file', self._spark_python_wrapper_path)}"
+                if self._spark_python_wrapper_path
+                else cmd_line(self._task_python_bin())
+            )
 
             if self._spark_deploy_mode() == 'cluster':
                 # treat driver like executors (they run in same environment)
@@ -1042,7 +999,7 @@ class MRJobBinRunner(MRJobRunner):
                 cmdenv['PYSPARK_PYTHON'] = executor_python
                 cmdenv['PYSPARK_DRIVER_PYTHON'] = driver_python
 
-        cmdenv.update(self._cmdenv())
+        cmdenv |= self._cmdenv()
         return cmdenv
 
 

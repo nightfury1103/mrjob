@@ -58,10 +58,7 @@ def expand_path(path):
 
     If *path* is ``None``, return ``None``.
     """
-    if path is None:
-        return None
-    else:
-        return os.path.expanduser(os.path.expandvars(path))
+    return None if path is None else os.path.expanduser(os.path.expandvars(path))
 
 
 def file_ext(filename):
@@ -79,9 +76,7 @@ def file_ext(filename):
     stripped_name = filename.lstrip('.')
     dot_index = stripped_name.find('.')
 
-    if dot_index == -1:
-        return ''
-    return stripped_name[dot_index:]
+    return '' if dot_index == -1 else stripped_name[dot_index:]
 
 
 def log_to_null(name=None):
@@ -239,10 +234,7 @@ def shlex_split(s):
     """Wrapper around shlex.split(), but convert to str if Python version <
     2.7.3 when unicode support was added.
     """
-    if sys.version_info < (2, 7, 3):
-        return shlex.split(str(s))
-    else:
-        return shlex.split(s)
+    return shlex.split(str(s)) if sys.version_info < (2, 7, 3) else shlex.split(s)
 
 
 def strip_microseconds(delta):
@@ -262,10 +254,7 @@ def to_lines(chunks):
     For efficiency, passes through anything with a ``readline()`` attribute.
     """
     # hopefully this is good enough for anything mrjob will encounter
-    if hasattr(chunks, 'readline'):
-        return chunks
-    else:
-        return _to_lines(chunks)
+    return chunks if hasattr(chunks, 'readline') else _to_lines(chunks)
 
 
 def _to_lines(chunks):
@@ -325,9 +314,8 @@ def unique(items):
     for item in items:
         if item in seen:
             continue
-        else:
-            yield item
-            seen.add(item)
+        yield item
+        seen.add(item)
 
 
 def unarchive(archive_path, dest):
@@ -363,7 +351,7 @@ def unarchive(archive_path, dest):
                     with open(dest_path, 'wb') as dest_file:
                         dest_file.write(archive.read(name))
     else:
-        raise IOError('Unknown archive type: %s' % (archive_path,))
+        raise IOError(f'Unknown archive type: {archive_path}')
 
 
 def which(cmd, path=None):

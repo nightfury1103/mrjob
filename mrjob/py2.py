@@ -104,23 +104,18 @@ where you use ``print()``. ``print(...)`` works fine, but
 
 You shouldn't need any other ``__future__`` imports.
 """
+
 import sys
 
 # use this to check if we're in Python 2
 PY2 = (sys.version_info[0] == 2)
 
 # ``string_types``, for ``isinstance(..., string_types)``
-if PY2:
-    string_types = (basestring,)
-else:
-    string_types = (str,)
+string_types = (basestring, ) if PY2 else (str, )
 string_types
 
 # ``integer_types``, for ``isinstance(..., integer_types)``
-if PY2:
-    integer_types = (int, long)
-else:
-    integer_types = (int,)
+integer_types = (int, long) if PY2 else (int, )
 integer_types
 
 # ``StringIO``. Useful for mocking out ``sys.stdout``, etc.
@@ -131,10 +126,7 @@ else:
 StringIO  # quiet, pyflakes
 
 # ``xrange``. Plain old ``range`` is almost always fine
-if PY2:
-    xrange = xrange
-else:
-    xrange = range
+xrange = xrange if PY2 else range
 xrange  # quiet, pyflakes
 
 # urllib stuff

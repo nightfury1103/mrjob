@@ -82,14 +82,13 @@ def _s3_cleanup(glob_path, time_old, dry_run=False, **runner_kwargs):
     """
     runner = EMRJobRunner(**runner_kwargs)
 
-    log.info('Deleting all files in %s that are older than %s' %
-             (glob_path, time_old))
+    log.info(f'Deleting all files in {glob_path} that are older than {time_old}')
 
     for path, key in runner.fs.s3._ls(glob_path):
         age = _boto3_now() - key.last_modified
         if age > time_old:
             # Delete it
-            log.info('Deleting %s; is %s old' % (path, age))
+            log.info(f'Deleting {path}; is {age} old')
             if not dry_run:
                 key.delete()
 
@@ -139,10 +138,7 @@ def _make_arg_parser():
         help='s3:// URIs specifying where to delete old files')
 
     _add_basic_args(arg_parser)
-    _add_runner_args(
-        arg_parser,
-        set(['region', 's3_endpoint']),
-    )
+    _add_runner_args(arg_parser, {'region', 's3_endpoint'})
 
     _alphabetize_actions(arg_parser)
 

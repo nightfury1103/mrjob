@@ -39,11 +39,7 @@ _CAT_CHUNK_SIZE = 8192
 
 
 def _path_glob_to_parsed_gcs_uri(path_glob):
-    # support globs
-    glob_match = GLOB_RE.match(path_glob)
-
-    # we're going to search for all keys starting with base_uri
-    if glob_match:
+    if glob_match := GLOB_RE.match(path_glob):
         # cut it off at first wildcard
         base_uri = glob_match.group(1)
     else:
@@ -114,11 +110,7 @@ class GCSFilesystem(Filesystem):
 
         This *will* return empty "directory" globs.
         """
-        # support globs
-        glob_match = GLOB_RE.match(path_glob)
-
-        # we're going to search for all keys starting with base_uri
-        if glob_match:
+        if glob_match := GLOB_RE.match(path_glob):
             # cut it off at first wildcard
             base_uri = glob_match.group(1)
         else:
@@ -128,9 +120,9 @@ class GCSFilesystem(Filesystem):
 
         # allow subdirectories of the path/glob
         if path_glob and not path_glob.endswith('/'):
-            dir_glob = path_glob + '/*'
+            dir_glob = f'{path_glob}/*'
         else:
-            dir_glob = path_glob + '*'
+            dir_glob = f'{path_glob}*'
 
         try:
             bucket = self.get_bucket(bucket_name)
@@ -138,7 +130,7 @@ class GCSFilesystem(Filesystem):
             return  # treat nonexistent buckets as empty
 
         for blob in bucket.list_blobs(prefix=base_name):
-            uri = "gs://%s/%s" % (bucket_name, blob.name)
+            uri = f"gs://{bucket_name}/{blob.name}"
 
             # enforce globbing
             if not (fnmatch.fnmatchcase(uri, path_glob) or
@@ -148,10 +140,10 @@ class GCSFilesystem(Filesystem):
             yield uri, blob
 
     def md5sum(self, path):
-        blob = self._get_blob(path)
-        if not blob:
+        if blob := self._get_blob(path):
+            return binascii.hexlify(b64decode(blob.md5_hash)).decode('ascii')
+        else:
             raise IOError('Object %r does not exist' % (path,))
-        return binascii.hexlify(b64decode(blob.md5_hash)).decode('ascii')
 
     def _cat_file(self, path):
         return decompress(self._cat_blob(path), path)
@@ -209,9 +201,7 @@ class GCSFilesystem(Filesystem):
             blob.delete()
 
     def touchz(self, path):
-        # check if already exists
-        old_blob = self._get_blob(path)
-        if old_blob:
+        if old_blob := self._get_blob(path):
             raise IOError('Non-empty file %r already exists!' % (path,))
 
         self._blob(path).upload_from_string(b'')
@@ -228,9 +218,8 @@ class GCSFilesystem(Filesystem):
         """
         part_size = self._part_size
 
-        old_blob = self._get_blob(path)
-        if old_blob:
-            raise IOError('File already exists: %s' % path)
+        if old_blob := self._get_blob(path):
+            raise IOError(f'File already exists: {path}')
 
         self._blob(path, chunk_size=part_size).upload_from_filename(src)
 
@@ -320,7 +309,7 @@ def parse_gcs_uri(uri):
     """
     components = urlparse(uri)
     if components.scheme != "gs" or '/' not in components.path:
-        raise ValueError('Invalid GCS URI: %s' % uri)
+        raise ValueError(f'Invalid GCS URI: {uri}')
 
     return components.netloc, components.path[1:]
 

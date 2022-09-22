@@ -52,9 +52,12 @@ class MatchTaskLogPathTestCase(BasicTestCase):
 
     def test_pre_yarn_syslog_gz(self):
         self.assertEqual(
-            _match_task_log_path(self.PRE_YARN_SYSLOG_PATH + '.gz'),
-            dict(attempt_id='attempt_201512232143_0008_m_000001_3',
-                 log_type='syslog'))
+            _match_task_log_path(f'{self.PRE_YARN_SYSLOG_PATH}.gz'),
+            dict(
+                attempt_id='attempt_201512232143_0008_m_000001_3',
+                log_type='syslog',
+            ),
+        )
 
     def test_pre_yarn_stderr(self):
         self.assertEqual(
@@ -85,22 +88,28 @@ class MatchTaskLogPathTestCase(BasicTestCase):
 
     def test_yarn_syslog_gz(self):
         self.assertEqual(
-            _match_task_log_path(self.YARN_SYSLOG_PATH + '.gz'),
-            dict(application_id='application_1450486922681_0004',
-                 container_id='container_1450486922681_0005_01_000003',
-                 log_type='syslog'))
+            _match_task_log_path(f'{self.YARN_SYSLOG_PATH}.gz'),
+            dict(
+                application_id='application_1450486922681_0004',
+                container_id='container_1450486922681_0005_01_000003',
+                log_type='syslog',
+            ),
+        )
 
     def test_dont_match_yarn_shuffle_syslog(self):
         self.assertEqual(
-            _match_task_log_path(self.YARN_SYSLOG_PATH + '.shuffle'),
-            None)
+            _match_task_log_path(f'{self.YARN_SYSLOG_PATH}.shuffle'), None
+        )
 
     def test_match_yarn_stderr(self):
         self.assertEqual(
-            _match_task_log_path(self.YARN_STDERR_PATH + '.gz'),
-            dict(application_id='application_1450486922681_0004',
-                 container_id='container_1450486922681_0005_01_000003',
-                 log_type='stderr'))
+            _match_task_log_path(f'{self.YARN_STDERR_PATH}.gz'),
+            dict(
+                application_id='application_1450486922681_0004',
+                container_id='container_1450486922681_0005_01_000003',
+                log_type='stderr',
+            ),
+        )
 
     def test_match_yarn_stdout(self):
         self.assertEqual(
@@ -135,7 +144,7 @@ class LsTaskLogsTestCase(BasicTestCase):
         self.mock_paths = []
 
         def mock_ls(log_dir):
-            return [p for p in self.mock_paths if p.startswith(log_dir + '/')]
+            return [p for p in self.mock_paths if p.startswith(f'{log_dir}/')]
 
         def mock_join(path, *paths):
             return '/'.join([path] + list(paths))

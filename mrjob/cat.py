@@ -46,8 +46,7 @@ def bunzip2_stream(fileobj, bufsize=1024):
     d = bz2.BZ2Decompressor()
 
     for chunk in to_chunks(fileobj):
-        part = d.decompress(chunk)
-        if part:
+        if part := d.decompress(chunk):
             yield part
 
 
@@ -70,8 +69,7 @@ def gunzip_stream(fileobj, bufsize=1024):
     READ_GZIP_DATA = 16
     d = zlib.decompressobj(READ_GZIP_DATA | zlib.MAX_WBITS)
     for chunk in to_chunks(fileobj, bufsize):
-        data = d.decompress(chunk)
-        if data:
+        if data := d.decompress(chunk):
             yield data
 
 
@@ -112,13 +110,11 @@ def to_chunks(readable, bufsize=1024):
     pass through as-is.
     """
     if hasattr(readable, '__iter__') and not hasattr(readable, 'read'):
-        for chunk in readable:
-            yield chunk
+        yield from readable
         return
 
     while True:
-        chunk = readable.read(bufsize)
-        if chunk:
+        if chunk := readable.read(bufsize):
             yield chunk
         else:
             return

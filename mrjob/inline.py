@@ -91,12 +91,13 @@ class InlineMRJobRunner(SimMRJobRunner):
 
         if step['type'] == 'streaming':
             for mrc in ('mapper', 'combiner', 'reducer'):
-                if step.get(mrc):
-                    if 'command' in step[mrc] or 'pre_filter' in step[mrc]:
-                        raise NotImplementedError(
-                            "step %d's %s runs a command, but inline"
-                            " runner does not support subprocesses (try"
-                            " -r local)" % (step_num, mrc))
+                if step.get(mrc) and (
+                    'command' in step[mrc] or 'pre_filter' in step[mrc]
+                ):
+                    raise NotImplementedError(
+                        "step %d's %s runs a command, but inline"
+                        " runner does not support subprocesses (try"
+                        " -r local)" % (step_num, mrc))
 
     def _invoke_task_func(self, task_type, step_num, task_num):
         """Just run tasks in the same process."""
@@ -105,8 +106,7 @@ class InlineMRJobRunner(SimMRJobRunner):
 
         # Don't care about pickleability since this runs in the same process
         def invoke_task(stdin, stdout, stderr, wd, env):
-            with save_current_environment(), save_cwd(), save_sys_path(), \
-                    save_sys_std():
+            with save_current_environment(), save_cwd(), save_sys_path(), save_sys_std():
                 # pretend we're running the script in the working dir
                 os.environ.update(env)
                 os.chdir(wd)
@@ -137,11 +137,10 @@ class InlineMRJobRunner(SimMRJobRunner):
                     # because then we lose the stacktrace (which is the whole
                     # point of the inline runner)
 
-                    if input_uri:  # from manifest
-                        self._error_while_reading_from = input_uri
-                    else:
-                        self._error_while_reading_from = self._task_input_path(
-                            task_type, step_num, task_num)
+                    self._error_while_reading_from = (
+                        input_uri
+                        or self._task_input_path(task_type, step_num, task_num)
+                    )
 
                     raise
 

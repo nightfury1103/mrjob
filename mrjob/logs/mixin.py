@@ -47,7 +47,7 @@ log = getLogger(__name__)
 # a callback for _interpret_task_logs(). Breaking it out to make
 # testing easier
 def _log_parsing_task_log(log_path):
-    log.info('  Parsing task log: %s' % log_path)
+    log.info(f'  Parsing task log: {log_path}')
 
 
 class LogInterpretationMixin(object):
@@ -119,8 +119,9 @@ class LogInterpretationMixin(object):
         """Pick probable cause of failure (only call this if job fails)."""
         logs_needed = self._logs_needed_to_pick_error(step_type)
 
-        if self._read_logs() and not all(
-                log_type in log_interpretation for log_type in logs_needed):
+        if self._read_logs() and any(
+            log_type not in log_interpretation for log_type in logs_needed
+        ):
             log.info('Scanning logs for probable cause of failure...')
 
             if 'step' in logs_needed:
@@ -139,13 +140,12 @@ class LogInterpretationMixin(object):
 
     def _logs_needed_to_pick_error(self, step_type):
         """We don't need all the logs when interpreting Spark steps"""
-        if self._step_type_uses_spark(step_type):
-            if self._spark_deploy_mode() == 'cluster':
-                return ('step', 'task')
-            else:
-                return ('step',)
-        else:
+        if not self._step_type_uses_spark(step_type):
             return ('step', 'history', 'task')
+        if self._spark_deploy_mode() == 'cluster':
+            return ('step', 'task')
+        else:
+            return ('step',)
 
     ### stuff that should just work ###
 
@@ -180,7 +180,7 @@ class LogInterpretationMixin(object):
                 self.fs,
                 self._stream_history_log_dirs(output_dir=output_dir),
                 job_id=job_id):
-            log.info('  Parsing history log: %s' % match['path'])
+            log.info(f"  Parsing history log: {match['path']}")
             yield match
 
     def _interpret_step_logs(self, log_interpretation, step_type):
@@ -191,9 +191,9 @@ class LogInterpretationMixin(object):
         if not self._read_logs():
             return
 
-        step_interpretation = self._get_step_log_interpretation(
-            log_interpretation, step_type)
-        if step_interpretation:
+        if step_interpretation := self._get_step_log_interpretation(
+            log_interpretation, step_type
+        ):
             log_interpretation['step'] = step_interpretation
 
     def _interpret_task_logs(
@@ -224,11 +224,10 @@ class LogInterpretationMixin(object):
                     log.warning(
                         "Can't fetch task logs; missing application ID")
                 return
-        else:
-            if not job_id:
-                if not log_interpretation.get('no_job'):
-                    log.warning("Can't fetch task logs; missing job ID")
-                return
+        elif not job_id:
+            if not log_interpretation.get('no_job'):
+                log.warning("Can't fetch task logs; missing job ID")
+            return
 
         if self._step_type_uses_spark(step_type):
             interpret_func = _interpret_spark_logs
@@ -260,28 +259,23 @@ class LogInterpretationMixin(object):
         else:
             ls_func = _ls_task_logs
 
-        # logging messages are handled by a callback in _interpret_task_logs()
-        matches = ls_func(
+        yield from ls_func(
             self.fs,
             self._stream_task_log_dirs(
-                application_id=application_id, output_dir=output_dir),
+                application_id=application_id, output_dir=output_dir
+            ),
             application_id=application_id,
             job_id=job_id,
             error_attempt_ids=error_attempt_ids,
             attempt_to_container_id=attempt_to_container_id,
         )
 
-        for match in matches:
-            yield match
-
     def _log_counters(self, log_interpretation, step_num):
         """Utility for logging counters (if any) for a step."""
         step_type = self._get_step(step_num)['type']
 
         if not self._step_type_uses_spark(step_type):
-            counters = self._pick_counters(
-                log_interpretation, step_type)
-            if counters:
+            if counters := self._pick_counters(log_interpretation, step_type):
                 log.info(_format_counters(counters))
             elif self._read_logs():
                 # should only log this if we actually looked for counters

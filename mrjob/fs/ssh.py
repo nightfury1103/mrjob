@@ -89,13 +89,17 @@ class SSHFilesystem(Filesystem):
 
             args.extend(
                 [
-                    '-o', 'UserKnownHostsFile=' + known_hosts_file,
-                    '-o', 'StrictHostKeyChecking=no',
-                    '-o', 'VerifyHostKeyDNS=no',
+                    '-o',
+                    f'UserKnownHostsFile={known_hosts_file}',
+                    '-o',
+                    'StrictHostKeyChecking=no',
+                    '-o',
+                    'VerifyHostKeyDNS=no',
                     '-A',
-                    'hadoop@' + host,
+                    f'hadoop@{host}',
                 ]
             )
+
 
         if self._sudo:
             args.append('sudo')
@@ -112,7 +116,7 @@ class SSHFilesystem(Filesystem):
 
         args = self._ssh_cmd_args(address, cmd_args)
 
-        log.debug('  > ' + cmd_line(args))
+        log.debug(f'  > {cmd_line(args)}')
         try:
             return Popen(args, stdout=PIPE, stderr=PIPE)
         except OSError as ex:
@@ -152,7 +156,7 @@ class SSHFilesystem(Filesystem):
         args = self._ssh_add_bin + [
             '-t', '60', self._ec2_key_pair_file]
 
-        log.debug('  > ' + cmd_line(args))
+        log.debug(f'  > {cmd_line(args)}')
 
         try:
             p = Popen(args, stdout=PIPE, stderr=PIPE)
@@ -180,7 +184,7 @@ class SSHFilesystem(Filesystem):
 
         for line in p.stdout:
             path = to_unicode(line).rstrip('\n')
-            yield 'ssh://%s%s' % (addr, path)
+            yield f'ssh://{addr}{path}'
 
         self._ssh_finish_run(p)
 
@@ -194,9 +198,7 @@ class SSHFilesystem(Filesystem):
 
         p = self._ssh_launch(addr, ['cat', fs_path])
 
-        for chunk in decompress(p.stdout, fs_path):
-            yield chunk
-
+        yield from decompress(p.stdout, fs_path)
         self._ssh_finish_run(p)
 
     def mkdir(self, path):

@@ -38,8 +38,8 @@ def _error(msg=None):
 
     def subcommand_line(name):
         spaces = ' ' * (longest_name - len(name))
-        return '  %s: %s%s' % (
-            name, spaces, descriptions[name])
+        return f'  {name}: {spaces}{descriptions[name]}'
+
     print(usage, file=stderr)
     print('\n'.join(
         subcommand_line(name) for name in sorted(descriptions)), file=stderr)

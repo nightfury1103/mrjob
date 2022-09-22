@@ -37,8 +37,9 @@ class SSHFSTestCase(MockSubprocessTestCase):
         self.master_ssh_root = self.makedirs('testmaster')
         self.env = dict(
             MOCK_SSH_VERIFY_KEY_FILE='true',
-            MOCK_SSH_ROOTS='testmaster=%s' % self.master_ssh_root,
+            MOCK_SSH_ROOTS=f'testmaster={self.master_ssh_root}',
         )
+
         self.ssh_worker_roots = []
 
         self.addCleanup(self.teardown_ssh, self.master_ssh_root)

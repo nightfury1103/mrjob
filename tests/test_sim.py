@@ -205,9 +205,10 @@ class SimRunnerJobConfTestCase(SandboxedTestCase):
 
             self.assertGreater(runner.counters()[0]['count']['combiners'], 2)
 
-        self.assertEqual(sorted(results),
-                         [('file://' + input_path, 3),
-                          ('file://' + input_gz_path, 1)])
+        self.assertEqual(
+            sorted(results),
+            [(f'file://{input_path}', 3), (f'file://{input_gz_path}', 1)],
+        )
 
     def _extra_expected_local_files(self, runner):
         """A list of additional local files expected, as tuples
@@ -247,7 +248,7 @@ class SimRunnerJobConfTestCase(SandboxedTestCase):
 
             runner.run()
 
-            results.update(dict(mr_job.parse_output(runner.cat_output())))
+            results |= dict(mr_job.parse_output(runner.cat_output()))
 
         working_dir = results['mapreduce.job.local.dir']
         self.assertEqual(working_dir,
@@ -257,12 +258,13 @@ class SimRunnerJobConfTestCase(SandboxedTestCase):
         self.assertEqual(results['mapreduce.job.cache.archives'], '')
 
         expected_cache_files = [
-            script_path + '#mr_test_jobconf.py',
-            upload_path + '#upload'
+            f'{script_path}#mr_test_jobconf.py',
+            f'{upload_path}#upload',
         ] + [
-            '%s#%s' % (path, name)
+            f'{path}#{name}'
             for path, name in self._extra_expected_local_files(runner)
         ]
+
         self.assertEqual(
             sorted(results['mapreduce.job.cache.files'].split(',')),
             sorted(expected_cache_files))
@@ -280,15 +282,22 @@ class SimRunnerJobConfTestCase(SandboxedTestCase):
             sorted(expected_local_files))
         self.assertEqual(results['mapreduce.job.id'], runner._job_key)
 
-        self.assertEqual(results['mapreduce.map.input.file'],
-                         'file://' + input_gz_path)
+        self.assertEqual(
+            results['mapreduce.map.input.file'], f'file://{input_gz_path}'
+        )
+
         self.assertEqual(results['mapreduce.map.input.length'],
                          str(input_gz_size))
         self.assertEqual(results['mapreduce.map.input.start'], '0')
-        self.assertEqual(results['mapreduce.task.attempt.id'],
-                         'attempt_%s_mapper_00000_0' % runner._job_key)
-        self.assertEqual(results['mapreduce.task.id'],
-                         'task_%s_mapper_00000' % runner._job_key)
+        self.assertEqual(
+            results['mapreduce.task.attempt.id'],
+            f'attempt_{runner._job_key}_mapper_00000_0',
+        )
+
+        self.assertEqual(
+            results['mapreduce.task.id'], f'task_{runner._job_key}_mapper_00000'
+        )
+
         self.assertEqual(results['mapreduce.task.ismap'], 'true')
         self.assertEqual(results['mapreduce.task.output.dir'],
                          runner._output_dir)
@@ -387,7 +396,7 @@ class FSOnlyHandlesFileURIsTestCase(SandboxedTestCase):
         foo_path = self.makefile('foo')
         bar_path = join(self.tmp_dir, 'bar')
         self.assertTrue(runner.fs.exists(foo_path))
-        self.assertFalse(runner.fs.exists('file://' + bar_path))
+        self.assertFalse(runner.fs.exists(f'file://{bar_path}'))
 
         # non-file:/// URI should raise IOError, not return False
         self.assertRaises(IOError,
@@ -421,7 +430,7 @@ class FileUploadTestCase(SandboxedTestCase):
         f1_path = self.makefile('f1', b'contents')
         f2_uri = 'file://' + self.makefile('f2', b'stuff')
 
-        job = MROSWalkJob(['--files', '%s,%s' % (f1_path, f2_uri)])
+        job = MROSWalkJob(['--files', f'{f1_path},{f2_uri}'])
         job.sandbox()
 
         with job.make_runner() as runner:
@@ -437,10 +446,9 @@ class FileUploadTestCase(SandboxedTestCase):
         self.makefile(join(qux_dir, 'bar'), b'baz')
 
         qux_tar_gz = make_archive(join(self.tmp_dir, 'qux'), 'gztar', qux_dir)
-        qux_tar_gz_uri = 'file://' + qux_tar_gz
+        qux_tar_gz_uri = f'file://{qux_tar_gz}'
 
-        job = MROSWalkJob(
-            ['--archives', '%s#qux,%s#qux2' % (qux_tar_gz, qux_tar_gz_uri)])
+        job = MROSWalkJob(['--archives', f'{qux_tar_gz}#qux,{qux_tar_gz_uri}#qux2'])
         job.sandbox()
 
         with job.make_runner() as runner:

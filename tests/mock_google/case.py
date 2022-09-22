@@ -185,7 +185,7 @@ class MockGoogleTestCase(SandboxedTestCase):
         assert type(raw_parts) is list
 
         base_uri = dataproc_runner.get_output_dir()
-        gcs_multi_dict = dict()
+        gcs_multi_dict = {}
         for part_num, part_data in enumerate(raw_parts):
             gcs_uri = base_uri + 'part-%05d' % part_num
             gcs_multi_dict[gcs_uri] = part_data

@@ -88,13 +88,14 @@ class MockIAMClient(object):
         self._check_role_does_not_exist(RoleName, 'CreateRole')
 
         role = dict(
-            Arn=('arn:aws:iam::012345678901:role/%s' % RoleName),
+            Arn=f'arn:aws:iam::012345678901:role/{RoleName}',
             AssumeRolePolicyDocument=json.loads(AssumeRolePolicyDocument),
             CreateDate=_boto3_now(),
             Path='/',
             RoleId='AROAMOCKMOCKMOCKMOCK',
             RoleName=RoleName,
         )
+
         self.mock_iam_roles[RoleName] = role
 
         return dict(Role=role)
@@ -102,26 +103,34 @@ class MockIAMClient(object):
     def list_roles(self):
         # PathPrefix not supported
 
-        roles = list(data for name, data in
-                     sorted(self.mock_iam_roles.items()))
+        roles = [data for name, data in sorted(self.mock_iam_roles.items())]
+
 
         return dict(Roles=roles)
 
     def _check_role_does_not_exist(self, RoleName, OperationName):
         if RoleName in self.mock_iam_roles:
             raise ClientError(
-                dict(Error=dict(
-                    Code='EntityAlreadyExists',
-                    Message=('Role with name %s already exists' % RoleName))),
-                OperationName)
+                dict(
+                    Error=dict(
+                        Code='EntityAlreadyExists',
+                        Message=f'Role with name {RoleName} already exists',
+                    )
+                ),
+                OperationName,
+            )
 
     def _check_role_exists(self, RoleName, OperationName):
         if RoleName not in self.mock_iam_roles:
             raise ClientError(
-                dict(Error=dict(
-                    Code='NoSuchEntity',
-                    Message=('Role not found for %s' % RoleName))),
-                OperationName)
+                dict(
+                    Error=dict(
+                        Code='NoSuchEntity',
+                        Message=f'Role not found for {RoleName}',
+                    )
+                ),
+                OperationName,
+            )
 
     # attached role policies
 
@@ -154,14 +163,14 @@ class MockIAMClient(object):
                                                     'CreateInstanceProfile')
 
         profile = dict(
-            Arn=('arn:aws:iam::012345678901:instance-profile/%s' %
-                 InstanceProfileName),
+            Arn=f'arn:aws:iam::012345678901:instance-profile/{InstanceProfileName}',
             CreateDate=_boto3_now(),
             InstanceProfileId='AIPAMOCKMOCKMOCKMOCK',
             InstanceProfileName=InstanceProfileName,
             Path='/',
             Roles=[],
         )
+
         self.mock_iam_instance_profiles[InstanceProfileName] = profile
 
         return dict(InstanceProfile=profile)
@@ -188,8 +197,10 @@ class MockIAMClient(object):
     def list_instance_profiles(self):
         # PathPrefix not implemented
 
-        profiles = list(data for name, data in
-                        sorted(self.mock_iam_instance_profiles.items()))
+        profiles = [
+            data for name, data in sorted(self.mock_iam_instance_profiles.items())
+        ]
+
 
         return dict(InstanceProfiles=profiles)
 
@@ -198,19 +209,25 @@ class MockIAMClient(object):
 
         if InstanceProfileName in self.mock_iam_instance_profiles:
             raise ClientError(
-                dict(Error=dict(
-                    Code='EntityAlreadyExists',
-                    Message=('Instance Profile %s already exists' %
-                             InstanceProfileName))),
-                OperationName)
+                dict(
+                    Error=dict(
+                        Code='EntityAlreadyExists',
+                        Message=f'Instance Profile {InstanceProfileName} already exists',
+                    )
+                ),
+                OperationName,
+            )
 
     def _check_instance_profile_exists(
             self, InstanceProfileName, OperationName):
 
         if InstanceProfileName not in self.mock_iam_instance_profiles:
             raise ClientError(
-                dict(Error=dict(
-                    Code='NoSuchEntity',
-                    Message=('Instance Profile %s cannot be found' %
-                             InstanceProfileName))),
-                OperationName)
+                dict(
+                    Error=dict(
+                        Code='NoSuchEntity',
+                        Message=f'Instance Profile {InstanceProfileName} cannot be found',
+                    )
+                ),
+                OperationName,
+            )

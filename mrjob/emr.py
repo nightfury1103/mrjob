@@ -364,7 +364,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if self._output_dir:
             self._output_dir = self._check_and_fix_s3_dir(self._output_dir)
         else:
-            self._output_dir = self._cloud_tmp_dir + 'output/'
+            self._output_dir = f'{self._cloud_tmp_dir}output/'
 
         # check AMI version
         if self._opts['image_version'].startswith('1.'):
@@ -389,7 +389,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
         # manage local files that we want to upload to S3. We'll add them
         # to this manager just before we need them.
-        s3_files_dir = self._cloud_tmp_dir + 'files/'
+        s3_files_dir = f'{self._cloud_tmp_dir}files/'
         self._upload_mgr = UploadDirManager(s3_files_dir)
 
         # master node setup script (handled later by
@@ -564,12 +564,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             # don't expose any part of secret credentials
             return '...'
         elif opt_key == 'aws_access_key_id':
-            if isinstance(opt_value, string_types):
-                return '...' + opt_value[-4:]
-            else:
-                # don't expose aws_access_key_id if it was accidentally
-                # put in a list or something
-                return '...'
+            return f'...{opt_value[-4:]}' if isinstance(opt_value, string_types) else '...'
         else:
             return opt_value
 
@@ -597,8 +592,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         # set cloud_tmp_dir by checking for existing buckets
         if not self._opts['cloud_tmp_dir']:
             self._set_cloud_tmp_dir()
-            log.info('Using %s as our temp dir on S3' %
-                     self._opts['cloud_tmp_dir'])
+            log.info(f"Using {self._opts['cloud_tmp_dir']} as our temp dir on S3")
 
         self._opts['cloud_tmp_dir'] = self._check_and_fix_s3_dir(
             self._opts['cloud_tmp_dir'])
@@ -621,24 +615,25 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             bucket_region = _get_bucket_region(client, bucket_name)
             if bucket_region == self._opts['region']:
                 # Regions are both specified and match
-                log.debug("using existing temp bucket %s" % bucket_name)
-                self._opts['cloud_tmp_dir'] = 's3://%s/tmp/' % bucket_name
+                log.debug(f"using existing temp bucket {bucket_name}")
+                self._opts['cloud_tmp_dir'] = f's3://{bucket_name}/tmp/'
                 return
 
         # That may have all failed. If so, pick a name.
-        bucket_name = 'mrjob-' + random_identifier()
-        self._opts['cloud_tmp_dir'] = 's3://%s/tmp/' % bucket_name
-        log.info('Auto-created temp S3 bucket %s' % bucket_name)
+        bucket_name = f'mrjob-{random_identifier()}'
+        self._opts['cloud_tmp_dir'] = f's3://{bucket_name}/tmp/'
+        log.info(f'Auto-created temp S3 bucket {bucket_name}')
         self._wait_for_s3_eventual_consistency()
 
     def _s3_log_dir(self):
         """Get the URI of the log directory for this job's cluster."""
         if not self._s3_log_dir_uri:
             cluster = self._describe_cluster()
-            log_uri = cluster.get('LogUri')
-            if log_uri:
-                self._s3_log_dir_uri = '%s%s/' % (
-                    log_uri.replace('s3n://', 's3://'), self._cluster_id)
+            if log_uri := cluster.get('LogUri'):
+                self._s3_log_dir_uri = (
+                    f"{log_uri.replace('s3n://', 's3://')}{self._cluster_id}/"
+                )
+
 
         return self._s3_log_dir_uri
 
@@ -647,7 +642,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if not is_s3_uri(s3_uri):
             raise ValueError('Invalid S3 URI: %r' % s3_uri)
         if not s3_uri.endswith('/'):
-            s3_uri = s3_uri + '/'
+            s3_uri = f'{s3_uri}/'
 
         return s3_uri
 
@@ -657,16 +652,10 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         return self._image_version_gte(_BAD_BASH_IMAGE_VERSION)
 
     def _default_sh_bin(self):
-        if self._bash_is_bad():
-            return _BAD_BASH_SH_BIN
-        else:
-            return _GOOD_BASH_SH_BIN
+        return _BAD_BASH_SH_BIN if self._bash_is_bad() else _GOOD_BASH_SH_BIN
 
     def _sh_pre_commands(self):
-        if self._bash_is_bad() and not self._opts['sh_bin']:
-            return ['set -e']
-        else:
-            return []
+        return ['set -e'] if self._bash_is_bad() and not self._opts['sh_bin'] else []
 
     @property
     def fs(self):
@@ -770,8 +759,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                     ' cannot be read as input!' % uri)
 
         if not exists:
-            raise IOError(
-                'Input path %s does not exist!' % (path,))
+            raise IOError(f'Input path {path} does not exist!')
 
     def _check_output_not_exists(self):
         """Verify the output path does not already exist. This avoids
@@ -779,8 +767,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         """
         try:
             if self.fs.exists(self._output_dir):
-                raise IOError(
-                    'Output path %s already exists!' % (self._output_dir,))
+                raise IOError(f'Output path {self._output_dir} already exists!')
         except botocore.exceptions.ClientError:
             pass
 
@@ -873,59 +860,60 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         """
         tunnel_config = self._ssh_tunnel_config()
 
-        if tunnel_config['localhost']:
-            # Issue #1311: on the 2.x AMIs, we want to tunnel to the job
-            # tracker on localhost; otherwise it won't
-            # work on some VPC setups.
-            return 'localhost'
-        else:
-            # Issue #1397: on the 3.x and 4.x AMIs we want to tunnel to the
-            # resource manager on the master node's *internal* IP; otherwise
-            # it work won't work on some VPC setups
-            return self._master_private_ip()
+        return 'localhost' if tunnel_config['localhost'] else self._master_private_ip()
 
     def _ssh_tunnel_args(self, bind_port):
-        for opt_name in ('ec2_key_pair', 'ec2_key_pair_file',
-                         'ssh_bind_ports'):
+        for opt_name in ('ec2_key_pair', 'ec2_key_pair_file', 'ssh_bind_ports'):
             if not self._opts[opt_name]:
-                log.warning(
-                    "  You must set %s in order to set up the SSH tunnel!"
-                    % opt_name)
+                log.warning(f"  You must set {opt_name} in order to set up the SSH tunnel!")
                 self._give_up_on_ssh_tunnel = True
                 return
 
-        host = self._address_of_master()
-        if not host:
-            return
+        if host := self._address_of_master():
+            return (
+                self._ssh_bin()
+                + [
+                    '-o',
+                    'VerifyHostKeyDNS=no',
+                    '-o',
+                    'StrictHostKeyChecking=no',
+                    '-o',
+                    'ExitOnForwardFailure=yes',
+                    '-o',
+                    f'UserKnownHostsFile={os.devnull}',
+                ]
+                + self._ssh_tunnel_opts(bind_port)
+                + ['-i', self._opts['ec2_key_pair_file'], f'hadoop@{host}']
+            )
 
-        return self._ssh_bin() + [
-            '-o', 'VerifyHostKeyDNS=no',
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'ExitOnForwardFailure=yes',
-            '-o', 'UserKnownHostsFile=%s' % os.devnull,
-        ] + self._ssh_tunnel_opts(bind_port) + [
-            '-i', self._opts['ec2_key_pair_file'],
-            'hadoop@%s' % host,
-        ]
+        else:
+            return
 
     def _ssh_hadoop_bin(self):
         if not self._opts['ec2_key_pair_file']:
             return []
 
         host = self._address_of_master()
-        if not host:
-            return []
-
-        return self._ssh_bin() + [
-            '-o', 'VerifyHostKeyDNS=no',
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'ExitOnForwardFailure=yes',
-            '-o', 'UserKnownHostsFile=%s' % os.devnull,
-            '-i', self._opts['ec2_key_pair_file'],
-            '-q',  # don't care about SSH warnings, we just want hadoop
-            'hadoop@%s' % host,
-            'hadoop',
-        ]
+        return (
+            self._ssh_bin()
+            + [
+                '-o',
+                'VerifyHostKeyDNS=no',
+                '-o',
+                'StrictHostKeyChecking=no',
+                '-o',
+                'ExitOnForwardFailure=yes',
+                '-o',
+                f'UserKnownHostsFile={os.devnull}',
+                '-i',
+                self._opts['ec2_key_pair_file'],
+                '-q',
+                f'hadoop@{host}',
+                'hadoop',
+            ]
+            if host
+            else []
+        )
 
     def _job_tracker_url(self):
         """Not actually used to set up the SSH tunnel, used to run curl
@@ -950,8 +938,8 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         # don't stop it if it was created due to --pool because the user
         # probably wants to use it again
         if self._cluster_id and not self._opts['cluster_id'] \
-                and not self._opts['pool_clusters']:
-            log.info('Terminating cluster: %s' % self._cluster_id)
+                    and not self._opts['pool_clusters']:
+            log.info(f'Terminating cluster: {self._cluster_id}')
             try:
                 self.make_emr_client().terminate_job_flows(
                     JobFlowIds=[self._cluster_id]
@@ -965,8 +953,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         # delete all the files we created on S3
         if self._cloud_tmp_dir:
             try:
-                log.info('Removing s3 temp directory %s...' %
-                         self._cloud_tmp_dir)
+                log.info(f'Removing s3 temp directory {self._cloud_tmp_dir}...')
                 self.fs.rm(self._cloud_tmp_dir)
                 self._cloud_tmp_dir = None
             except Exception as e:
@@ -978,9 +965,9 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         # delete the log files, if it's a cluster we created (the logs
         # belong to the cluster)
         if self._s3_log_dir() and not self._opts['cluster_id'] \
-                and not self._opts['pool_clusters']:
+                    and not self._opts['pool_clusters']:
             try:
-                log.info('Removing log files in %s...' % self._s3_log_dir())
+                log.info(f'Removing log files in {self._s3_log_dir()}...')
                 self.fs.rm(self._s3_log_dir())
             except Exception as e:
                 log.exception(e)
@@ -1000,7 +987,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             # Something happened with boto3 and the user should know.
             log.exception(e)
             return
-        log.info('Cluster %s successfully terminated' % self._cluster_id)
+        log.info(f'Cluster {self._cluster_id} successfully terminated')
 
     def _wait_for_s3_eventual_consistency(self):
         """Sleep for a little while, to give S3 a chance to sync up.
@@ -1013,8 +1000,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if not cluster:
             cluster = self._describe_cluster()
 
-        log.info('Waiting for cluster (%s) to terminate...' %
-                 cluster['Id'])
+        log.info(f"Waiting for cluster ({cluster['Id']}) to terminate...")
 
         if (cluster['Status']['State'] == 'WAITING' and
                 cluster['AutoTerminate']):
@@ -1022,7 +1008,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                             ' it may never do so.')
 
         while True:
-            log.info('  %s' % cluster['Status']['State'])
+            log.info(f"  {cluster['Status']['State']}")
 
             if cluster['Status']['State'] in (
                     'TERMINATED', 'TERMINATED_WITH_ERRORS'):
@@ -1040,8 +1026,8 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             raise ValueError
 
         # explicitly set
-        if self._opts[role.lower() + '_instance_type']:
-            return self._opts[role.lower() + '_instance_type']
+        if self._opts[f'{role.lower()}_instance_type']:
+            return self._opts[f'{role.lower()}_instance_type']
 
         elif self._instance_is_worker(role):
             # using *instance_type* here is defensive programming;
@@ -1055,10 +1041,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         """Default instance type if not set by the user."""
         # m5.xlarge is available on all regions, but only works in AMI 5.13.0
         # or later. See #2098.
-        if self._image_version_gte('5.13.0'):
-            return 'm5.xlarge'
-        else:
-            return 'm4.large'
+        return 'm5.xlarge' if self._image_version_gte('5.13.0') else 'm4.large'
 
     def _instance_is_worker(self, role):
         """Do instances of the given role run tasks? True for non-master
@@ -1075,17 +1058,14 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if role not in _INSTANCE_ROLES:
             raise ValueError
 
-        if role == 'MASTER':
-            return 1  # there can be only one
-        else:
-            return self._opts['num_' + role.lower() + '_instances']
+        return 1 if role == 'MASTER' else self._opts[f'num_{role.lower()}_instances']
 
     def _instance_bid_price(self, role):
         """What's the bid price for the given role (if any)?"""
         if role not in _INSTANCE_ROLES:
             raise ValueError
 
-        return self._opts[role.lower() + '_instance_bid_price']
+        return self._opts[f'{role.lower()}_instance_bid_price']
 
     def _instance_groups(self):
         """Which instance groups do we want to request?
@@ -1093,10 +1073,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         Returns the value of the ``InstanceGroups`` parameter
         passed to the EMR API.
         """
-        if self._opts['instance_groups']:
-            return self._opts['instance_groups']
-
-        return [
+        return self._opts['instance_groups'] or [
             _build_instance_group(
                 role=role,
                 instance_type=self._instance_type(role),
@@ -1126,7 +1103,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                       for k, v in sorted(kwargs.items()))))
         cluster_id = emr_client.run_job_flow(**kwargs)['JobFlowId']
 
-        log.info('Created new cluster %s' % cluster_id)
+        log.info(f'Created new cluster {cluster_id}')
 
         # set EMR tags for the cluster
         tags = dict(self._opts['tags'])
@@ -1159,16 +1136,14 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             ResourceId=cluster_id,
             Tags=[dict(Key=k, Value=v) for k, v in tags_items])
 
-        log.info('Added EMR tags to cluster %s: %s' % (
-            cluster_id,
-            ', '.join('%s=%s' % (tag, value) for tag, value in tags_items)))
+        log.info(
+            f"Added EMR tags to cluster {cluster_id}: {', '.join(f'{tag}={value}' for tag, value in tags_items)}"
+        )
 
     # TODO: could break this into sub-methods for clarity
     def _cluster_kwargs(self, persistent=False):
         """Build kwargs for emr_client.run_job_flow()"""
-        kwargs = {}
-
-        kwargs['Name'] = self._job_key + self._cluster_name_pooling_suffix()
+        kwargs = {'Name': self._job_key + self._cluster_name_pooling_suffix()}
 
         kwargs['LogUri'] = self._opts['cloud_log_dir']
 
@@ -1250,13 +1225,11 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         kwargs['JobFlowRole'] = self._instance_profile()
         kwargs['ServiceRole'] = self._service_role()
 
-        applications = self._applications()
-        if applications:
+        if applications := self._applications():
             kwargs['Applications'] = [
                 dict(Name=a) for a in sorted(applications)]
 
-        emr_configurations = self._emr_configurations()
-        if emr_configurations:
+        if emr_configurations := self._emr_configurations():
             kwargs['Configurations'] = emr_configurations
 
         if self._opts['subnet']:
@@ -1324,9 +1297,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if self._master_node_setup_script_path:
             steps.append(self._build_master_node_setup_step())
 
-        for n in range(self._num_steps()):
-            steps.append(self._build_step(n))
-
+        steps.extend(self._build_step(n) for n in range(self._num_steps()))
         return steps
 
     def _build_step(self, step_num):
@@ -1412,13 +1383,10 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
     def _upload_uri_or_remote_path(self, path):
         """Return where *path* will be uploaded, or, if it starts with
         ``'file:///'``, a local path."""
-        if path.startswith('file:///'):
-            return path[7:]  # keep leading slash
-        else:
-            return self._upload_mgr.uri(path)
+        return path[7:] if path.startswith('file:///') else self._upload_mgr.uri(path)
 
     def _build_master_node_setup_step(self):
-        name = '%s: Master node setup' % self._job_key
+        name = f'{self._job_key}: Master node setup'
         jar = self._script_runner_jar_uri()
         step_args = [self._upload_mgr.uri(self._master_node_setup_script_path)]
 
@@ -1483,8 +1451,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             self._cluster_id = self._create_cluster()
             self._created_cluster = True
         else:
-            log.info('Adding our job to existing cluster %s' %
-                     self._cluster_id)
+            log.info(f'Adding our job to existing cluster {self._cluster_id}')
             self._log_address_of_master_once()
 
         # now that we know which cluster it is, check for Spark support
@@ -1507,7 +1474,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
         # learn about how fast the cluster state switches
         cluster = self._describe_cluster()
-        log.debug('Cluster has state %s' % cluster['Status']['State'])
+        log.debug(f"Cluster has state {cluster['Status']['State']}")
 
         # SSH FS uses sudo if we're on AMI 4.3.0+ (see #1244)
         if hasattr(self.fs, 'ssh') and version_gte(
@@ -1574,13 +1541,8 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             step_name = step['Name'].split(': ')[-1]
 
             # treat master node setup script is treated as step -1
-            if self._master_node_setup_script_path:
-                step_num = i - 1
-            else:
-                step_num = i
-
-            log.info('Waiting for %s (%s) to complete...' %
-                     (step_name, step_id))
+            step_num = i - 1 if self._master_node_setup_script_path else i
+            log.info(f'Waiting for {step_name} ({step_id}) to complete...')
 
             self._wait_for_step_to_complete(step_id, step_num)
 
@@ -1625,28 +1587,25 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                 cluster = self._describe_cluster()
 
                 reason = _get_reason(cluster)
-                reason_desc = (': %s' % reason) if reason else ''
+                reason_desc = f': {reason}' if reason else ''
 
                 # we can open the ssh tunnel if cluster is ready (see #1115)
                 if cluster['Status']['State'] in ('RUNNING', 'WAITING'):
                     self._set_up_ssh_tunnel_and_hdfs()
 
-                log.info('  PENDING (cluster is %s%s)' % (
-                    cluster['Status']['State'], reason_desc))
+                log.info(f"  PENDING (cluster is {cluster['Status']['State']}{reason_desc})")
                 continue
 
             elif step['Status']['State'] == 'RUNNING':
 
                 time_running_desc = ''
 
-                start = step['Status']['Timeline'].get('StartDateTime')
-                if start:
-                    time_running_desc = ' for %s' % strip_microseconds(
-                        _boto3_now() - start)
+                if start := step['Status']['Timeline'].get('StartDateTime'):
+                    time_running_desc = f' for {strip_microseconds(_boto3_now() - start)}'
 
                 # now is the time to tunnel, if we haven't already
                 self._set_up_ssh_tunnel_and_hdfs()
-                log.info('  RUNNING%s' % time_running_desc)
+                log.info(f'  RUNNING{time_running_desc}')
 
                 # don't log progress for master node setup step, because
                 # it doesn't appear in job tracker
@@ -1658,7 +1617,6 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
                 continue
 
-            # we're done, will return at the end of this
             elif step['Status']['State'] == 'COMPLETED':
                 log.info('  COMPLETED')
                 # will fetch counters, below, and then return
@@ -1666,21 +1624,19 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                 # step has failed somehow. *reason* seems to only be set
                 # when job is cancelled (e.g. 'Job terminated')
                 reason = _get_reason(step)
-                reason_desc = (' (%s)' % reason) if reason else ''
+                reason_desc = f' ({reason})' if reason else ''
 
-                log.info('  %s%s' % (
-                    step['Status']['State'], reason_desc))
+                log.info(f"  {step['Status']['State']}{reason_desc}")
 
                 # print cluster status; this might give more context
                 # why step didn't succeed
                 cluster = self._describe_cluster()
                 reason = _get_reason(cluster)
-                reason_desc = (': %s' % reason) if reason else ''
-                log.info('Cluster %s %s %s%s' % (
-                    cluster['Id'],
-                    'was' if 'ED' in cluster['Status']['State'] else 'is',
-                    cluster['Status']['State'],
-                    reason_desc))
+                reason_desc = f': {reason}' if reason else ''
+                log.info(
+                    f"Cluster {cluster['Id']} {'was' if 'ED' in cluster['Status']['State'] else 'is'} {cluster['Status']['State']}{reason_desc}"
+                )
+
 
                 if cluster['Status']['State'] in (
                         'TERMINATING', 'TERMINATED', 'TERMINATED_WITH_ERRORS'):
@@ -1709,8 +1665,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                 return
 
             if step['Status']['State'] == 'FAILED':
-                error = self._pick_error(log_interpretation, step_type)
-                if error:
+                if error := self._pick_error(log_interpretation, step_type):
                     _log_probable_cause_of_failure(log, error)
 
             raise StepFailedException(
@@ -1733,7 +1688,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if not master_dns:
             return
 
-        log.info('  master node is %s' % master_dns)
+        log.info(f'  master node is {master_dns}')
         self._logged_address_of_master.add(self._cluster_id)
 
     def _log_step_progress(self):
@@ -1769,15 +1724,17 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             return None
 
         tunnel_config = self._ssh_tunnel_config()
-        log.debug('  Fetching progress from %s at %s' % (
-            tunnel_config['name'], self._ssh_tunnel_url))
+        log.debug(
+            f"  Fetching progress from {tunnel_config['name']} at {self._ssh_tunnel_url}"
+        )
+
 
         tunnel_handle = None
         try:
             tunnel_handle = urlopen(self._ssh_tunnel_url)
             return tunnel_handle.read()
         except Exception as e:
-            log.debug('    failed: %s' % str(e))
+            log.debug(f'    failed: {str(e)}')
             return None
         finally:
             if tunnel_handle:
@@ -1797,14 +1754,13 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         tunnel_config = self._ssh_tunnel_config()
         remote_url = self._job_tracker_url()
 
-        log.debug('  Fetching progress from %s over SSH' % (
-            tunnel_config['name']))
+        log.debug(f"  Fetching progress from {tunnel_config['name']} over SSH")
 
         try:
             stdout, _ = self.fs.ssh._ssh_run(host, ['curl', remote_url])
             return stdout
         except Exception as e:
-            log.debug('    failed: %s' % str(e))
+            log.debug(f'    failed: {str(e)}')
 
         return None
 
@@ -1854,9 +1810,10 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             cluster = self._describe_cluster()
 
         reason = _get_reason(cluster)
-        if any(reason.endswith('/%s is invalid' % role)
-               for role in (_FALLBACK_INSTANCE_PROFILE,
-                            _FALLBACK_SERVICE_ROLE)):
+        if any(
+            reason.endswith(f'/{role} is invalid')
+            for role in (_FALLBACK_INSTANCE_PROFILE, _FALLBACK_SERVICE_ROLE)
+        ):
             log.warning(
                 '\n'
                 'Ask your admin to create the default EMR roles'
@@ -1866,7 +1823,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
     def _default_step_output_dir(self):
         # put intermediate data in HDFS
-        return 'hdfs:///tmp/mrjob/%s/step-output' % self._job_key
+        return f'hdfs:///tmp/mrjob/{self._job_key}/step-output'
 
     ### LOG PARSING (implementation of LogInterpretationMixin) ###
 
@@ -1902,7 +1859,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                     action_num=action_num, node_id=node_id),
                 action_num=action_num,
                 node_id=node_id):
-            log.info('  Parsing boostrap stderr log: %s' % match['path'])
+            log.info(f"  Parsing boostrap stderr log: {match['path']}")
             yield match
 
     def _stream_bootstrap_log_dirs(self, action_num=None, node_id=None):
@@ -2013,7 +1970,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         for match in _ls_emr_step_syslogs(
                 self.fs, self._stream_step_log_dirs(step_id=step_id),
                 step_id=step_id):
-            log.info('  Parsing step log: %s' % match['path'])
+            log.info(f"  Parsing step log: {match['path']}")
             yield match
 
     def _ls_step_stderr_logs(self, step_id):
@@ -2021,7 +1978,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         for match in _ls_emr_step_stderr_logs(
                 self.fs, self._stream_step_log_dirs(step_id=step_id),
                 step_id=step_id):
-            log.info('  Parsing step log: %s' % match['path'])
+            log.info(f"  Parsing step log: {match['path']}")
             yield match
 
     def _stream_step_log_dirs(self, step_id):
@@ -2053,12 +2010,11 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             hdfs_log_dir = posixpath.join(
                 _DEFAULT_YARN_HDFS_LOG_DIR, hdfs_dir_name)
 
-            log.info('Looking for %s in %s...' % (log_desc, hdfs_log_dir))
+            log.info(f'Looking for {log_desc} in {hdfs_log_dir}...')
             yield [hdfs_log_dir]
 
         if dir_name and self.fs.can_handle_path('ssh:///'):
-            ssh_host = self._address_of_master()
-            if ssh_host:
+            if ssh_host := self._address_of_master():
                 hosts = [ssh_host]
                 host_desc = ssh_host
                 if ssh_to_workers:
@@ -2066,15 +2022,15 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                         hosts.extend(self._ssh_worker_hosts())
                         host_desc += ' and task/core nodes'
                     except IOError:
-                        log.warning('Could not get worker addresses for %s' %
-                                    ssh_host)
+                        log.warning(f'Could not get worker addresses for {ssh_host}')
 
                 path = posixpath.join(_EMR_LOG_DIR, dir_name)
-                log.info('Looking for %s in %s on %s...' % (
-                    log_desc, path, host_desc))
-                yield ['ssh://%s%s%s' % (
-                    ssh_host, '!' + host if host != ssh_host else '',
-                    path) for host in hosts]
+                log.info(f'Looking for {log_desc} in {path} on {host_desc}...')
+                yield [
+                    f"ssh://{ssh_host}{f'!{host}' if host != ssh_host else ''}{path}"
+                    for host in hosts
+                ]
+
 
         # wait for logs to be on S3
         self._wait_for_logs_on_s3()
@@ -2083,7 +2039,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
         if s3_dir_name and self._s3_log_dir():
             cloud_log_dir = posixpath.join(self._s3_log_dir(), s3_dir_name)
-            log.info('Looking for %s in %s...' % (log_desc, cloud_log_dir))
+            log.info(f'Looking for {log_desc} in {cloud_log_dir}...')
             yield [cloud_log_dir]
 
     def _ssh_worker_hosts(self):
@@ -2102,12 +2058,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             InstanceGroupTypes=['CORE', 'TASK'],
             InstanceStates=['RUNNING'])
 
-        hosts = []
-
-        for instance in instances:
-            hosts.append(instance['PrivateIpAddress'])
-
-        return hosts
+        return [instance['PrivateIpAddress'] for instance in instances]
 
     def _wait_for_logs_on_s3(self):
         """If the cluster is already terminating, wait for it to terminate,
@@ -2177,25 +2128,22 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             # longer an easy way to get it now that apt-get is broken.)
             return []
 
-        # if bootstrap_python is None, install it for all AMIs up to 4.6.0,
-        # and warn if it's an AMI before 3.7.0
-        if self._opts['bootstrap_python'] or (
-                self._opts['bootstrap_python'] is None and
-                not self._image_version_gte('4.6.0')):
-
-            # we have to have at least on AMI 3.7.0. But give it a shot
-            if not self._image_version_gte('3.7.0'):
-                log.warning(
-                    'bootstrapping Python 3 will probably not work on'
-                    ' AMIs prior to 3.7.0. For an alternative, see:'
-                    ' https://pythonhosted.org/mrjob/guides/emr-bootstrap'
-                    '-cookbook.html#installing-python-from-source')
-
-            return [[
-                'sudo yum install -y python34 python34-devel python34-pip'
-            ]]
-        else:
+        if not self._opts['bootstrap_python'] and (
+            self._opts['bootstrap_python'] is not None
+            or self._image_version_gte('4.6.0')
+        ):
             return []
+        # we have to have at least on AMI 3.7.0. But give it a shot
+        if not self._image_version_gte('3.7.0'):
+            log.warning(
+                'bootstrapping Python 3 will probably not work on'
+                ' AMIs prior to 3.7.0. For an alternative, see:'
+                ' https://pythonhosted.org/mrjob/guides/emr-bootstrap'
+                '-cookbook.html#installing-python-from-source')
+
+        return [[
+            'sudo yum install -y python34 python34-devel python34-pip'
+        ]]
 
     def _should_bootstrap_spark(self):
         """Return *bootstrap_spark* option if set; otherwise return
@@ -2211,18 +2159,16 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         applications = set(self._opts['applications'])
 
         # release_label implies 4.x AMI and later
-        if (add_spark and self._should_bootstrap_spark() and
-                self._opts['release_label']):
-            # EMR allows us to have both "spark" and "Spark" applications,
-            # which is probably not what we want
-            if not self._has_spark_application():
-                applications.add('Spark')
+        if (
+            add_spark
+            and self._should_bootstrap_spark()
+            and self._opts['release_label']
+        ) and not self._has_spark_application():
+            applications.add('Spark')
 
         # patch in "Hadoop" unless applications is empty (e.g. 3.x AMIs)
-        if applications:
-            # don't add both "Hadoop" and "hadoop"
-            if not any(a.lower() == 'hadoop' for a in applications):
-                applications.add('Hadoop')
+        if applications and all(a.lower() != 'hadoop' for a in applications):
+            applications.add('Hadoop')
 
         return applications
 
@@ -2235,32 +2181,26 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         actions = list(self._opts['bootstrap_actions'])
 
         # no release_label implies AMIs prior to 4.x
-        if (add_spark and self._should_bootstrap_spark() and
-                not self._opts['release_label']):
-
-            # running this action twice apparently breaks Spark's
-            # ability to output to S3 (see #1367)
-            if not self._has_spark_install_bootstrap_action():
-                actions.append(_3_X_SPARK_BOOTSTRAP_ACTION)
+        if (
+            add_spark
+            and self._should_bootstrap_spark()
+            and not self._opts['release_label']
+        ) and not self._has_spark_install_bootstrap_action():
+            actions.append(_3_X_SPARK_BOOTSTRAP_ACTION)
 
         results = []
         for action in actions:
-            args = shlex_split(action)
-            if not args:
-                raise ValueError('bad bootstrap action: %r' % (action,))
+            if args := shlex_split(action):
+                results.append(dict(path=args[0], args=args[1:]))
 
-            results.append(dict(path=args[0], args=args[1:]))
+            else:
+                raise ValueError('bad bootstrap action: %r' % (action,))
 
         return results
 
     def _cp_to_local_cmd(self):
         """Command to copy files from the cloud to the local directory."""
-        if self._opts['release_label']:
-            # on the 4.x AMIs, hadoop isn't yet installed, so use AWS CLI
-            return 'aws s3 cp'
-        else:
-            # on the 2.x and 3.x AMIs, use hadoop
-            return 'hadoop fs -copyToLocal'
+        return 'aws s3 cp' if self._opts['release_label'] else 'hadoop fs -copyToLocal'
 
     def _manifest_download_commands(self):
         return [
@@ -2302,30 +2242,28 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         """
         # TODO: this is very similar to _master_bootstrap_script_content();
         # merge common code
-        out = []
+        out = list(self._start_of_sh_script())
 
-        # shebang, etc.
-        for line in self._start_of_sh_script():
-            out.append(line)
-        out.append('')
-
-        # run commands in a block so we can redirect stdout to stderr
-        # (e.g. to catch errors from compileall). See #370
-        out.append('{')
-
+        out.extend(('', '{'))
         # make working dir
         working_dir = self._master_node_setup_working_dir()
-        out.append('  mkdir -p %s' % pipes.quote(working_dir))
-        out.append('  cd %s' % pipes.quote(working_dir))
-        out.append('')
+        out.extend(
+            (
+                f'  mkdir -p {pipes.quote(working_dir)}',
+                f'  cd {pipes.quote(working_dir)}',
+                '',
+            )
+        )
 
         for name, path in sorted(
                 self._master_node_setup_mgr.name_to_path('file').items()):
             uri = self._upload_mgr.uri(path)
-            out.append('  %s %s %s' % (
-                self._cp_to_local_cmd(), pipes.quote(uri), pipes.quote(name)))
-            # imitate Hadoop Distributed Cache
-            out.append('  chmod u+rx %s' % pipes.quote(name))
+            out.extend(
+                (
+                    f'  {self._cp_to_local_cmd()} {pipes.quote(uri)} {pipes.quote(name)}',
+                    f'  chmod u+rx {pipes.quote(name)}',
+                )
+            )
 
         # at some point we will probably run commands as well (see #1336)
 
@@ -2335,12 +2273,10 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
     def _master_node_setup_working_dir(self):
         """Where to place files used by the master node setup script."""
-        return '/home/hadoop/%s' % self._job_key
+        return f'/home/hadoop/{self._job_key}'
 
     def _script_runner_jar_uri(self):
-        return (
-            's3://%s.elasticmapreduce/libs/script-runner/script-runner.jar' %
-            self._opts['region'])
+        return f"s3://{self._opts['region']}.elasticmapreduce/libs/script-runner/script-runner.jar"
 
     def _build_debugging_step(self):
         if self._opts['release_label']:
@@ -2348,9 +2284,8 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             args = ['state-pusher-script']
         else:
             jar = self._script_runner_jar_uri()
-            args = (
-                's3://%s.elasticmapreduce/libs/state-pusher/0.1/fetch' %
-                self._opts['region'])
+            args = f"s3://{self._opts['region']}.elasticmapreduce/libs/state-pusher/0.1/fetch"
+
 
         return dict(
             Name='Setup Hadoop Debugging',
@@ -2358,17 +2293,16 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         )
 
     def _debug_script_uri(self):
-        return (
-            's3://%s.elasticmapreduce/libs/state-pusher/0.1/fetch' %
-            self._opts['region'])
+        return f"s3://{self._opts['region']}.elasticmapreduce/libs/state-pusher/0.1/fetch"
 
     ### EMR JOB MANAGEMENT UTILS ###
 
     def make_persistent_cluster(self):
-        if (self._cluster_id):
+        if self._cluster_id:
             raise ValueError(
-                'This runner is already associated with cluster ID %s' %
-                (self._cluster_id))
+                f'This runner is already associated with cluster ID {self._cluster_id}'
+            )
+
 
         log.info('Creating persistent cluster to run several jobs in...')
 
@@ -2437,8 +2371,6 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                      (so we can call this again to get stats on newly created
                      clusters only)
         """
-        # a map from cluster_id to cpu_capacity
-        available = {}
         matching = set()
         in_pool = set()
         max_created = None
@@ -2459,10 +2391,12 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if created_after:
             list_cluster_kwargs['CreatedAfter'] = created_after
 
-        log.debug('calling list_clusters(%s)' % ', '.join(
-            '%s=%r' % (k, v)
-            for k, v in sorted(list_cluster_kwargs.items())))
+        log.debug(
+            f"calling list_clusters({', '.join('%s=%r' % (k, v) for k, v in sorted(list_cluster_kwargs.items()))})"
+        )
 
+
+        available = {}
         for cluster in _boto3_paginate(
                 'Clusters', emr_client, 'list_clusters',
                 **list_cluster_kwargs):
@@ -2490,9 +2424,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             if cluster['Status']['State'] not in states_to_match:
                 continue
 
-            when_ready = cluster['Status']['Timeline'].get('ReadyDateTime')
-
-            if when_ready:
+            if when_ready := cluster['Status']['Timeline'].get('ReadyDateTime'):
                 hours = max(ceil((now - when_ready).total_seconds() / 3600),
                             1.0)
                 cpu_capacity = cluster['NormalizedInstanceHours'] / hours
@@ -2525,20 +2457,24 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         """
         emr_client = self.make_emr_client()
 
-        if (self._opts['min_available_mb'] or
-                self._opts['min_available_virtual_cores']):
+        if (
+            self._opts['min_available_mb']
+            or self._opts['min_available_virtual_cores']
+        ):
             cluster = emr_client.describe_cluster(
                 ClusterId=cluster_id)['Cluster']
 
             host = cluster['MasterPublicDnsName']
             try:
-                log.debug('    querying clusterMetrics from %s' % host)
+                log.debug(f'    querying clusterMetrics from {host}')
                 metrics = self._yrm_get('metrics', host=host)['clusterMetrics']
                 log.debug('      metrics: %s' %
                           json.dumps(metrics, sort_keys=True))
             except IOError as ex:
-                log.info('    error while getting metrics for cluster %s: %s' %
-                         (cluster_id, str(ex)))
+                log.info(
+                    f'    error while getting metrics for cluster {cluster_id}: {str(ex)}'
+                )
+
                 return False
 
             if metrics['availableMB'] < self._opts['min_available_mb']:
@@ -2559,8 +2495,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             except botocore.exceptions.ClientError:
                 # this shouldn't usually happen because whether a cluster
                 # uses instance fleets is in the pool hash
-                log.debug('  cluster %s: does not use instance fleets' %
-                          cluster_id)
+                log.debug(f'  cluster {cluster_id}: does not use instance fleets')
                 return False
 
             return _instance_fleets_satisfy(
@@ -2573,8 +2508,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             except botocore.exceptions.ClientError:
                 # this shouldn't usually happen because whether a cluster
                 # uses instance fleets is in the pool hash
-                log.debug(' cluster %s: does not use instance groups' %
-                          cluster_id)
+                log.debug(f' cluster {cluster_id}: does not use instance groups')
                 return False
 
             return _instance_groups_satisfy(groups, self._instance_groups())
@@ -2587,30 +2521,27 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         if (self._opts['ec2_key_pair'] and
                 self._opts['ec2_key_pair'] !=
                 cluster['Ec2InstanceAttributes'].get('Ec2KeyName')):
-            log.debug('  cluster %s: ec2 key pair mismatch' % cluster_id)
+            log.debug(f'  cluster {cluster_id}: ec2 key pair mismatch')
             return False
 
         # only take persistent clusters
         if cluster['AutoTerminate']:
-            log.debug('  cluster %s: not persistent' % cluster_id)
+            log.debug(f'  cluster {cluster_id}: not persistent')
             return False
 
         # EBS root volume size
         if self._opts['ebs_root_volume_gb']:
             if 'EbsRootVolumeSize' not in cluster:
-                log.debug('  cluster %s: EBS root volume size not set' %
-                          cluster_id)
+                log.debug(f'  cluster {cluster_id}: EBS root volume size not set')
                 return False
             elif (cluster['EbsRootVolumeSize'] <
                     self._opts['ebs_root_volume_gb']):
-                log.debug('  cluster %s: EBS root volume size too small' %
-                          cluster_id)
+                log.debug(f'  cluster {cluster_id}: EBS root volume size too small')
                 return False
-        else:
-            if 'EbsRootVolumeSize' in cluster:
-                log.debug('  cluster %s: uses non-default EBS root volume'
-                          ' size' % cluster_id)
-                return False
+        elif 'EbsRootVolumeSize' in cluster:
+            log.debug('  cluster %s: uses non-default EBS root volume'
+                      ' size' % cluster_id)
+            return False
 
         # subnet
         subnet = cluster['Ec2InstanceAttributes'].get('Ec2SubnetId')
@@ -2621,14 +2552,13 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             matches = (subnet == (self._opts['subnet'] or None))
 
         if not matches:
-            log.debug('  cluster %s: subnet mismatch' % cluster_id)
+            log.debug(f'  cluster {cluster_id}: subnet mismatch')
             return
 
         # step concurrency
         step_concurrency = cluster.get('StepConcurrencyLevel', 1)
         if step_concurrency > self._opts['max_concurrent_steps']:
-            log.debug('  cluster %s: step concurrency level too high' %
-                      cluster_id)
+            log.debug(f'  cluster {cluster_id}: step concurrency level too high')
             return
 
         return True
@@ -2667,7 +2597,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
                 cluster_id = cluster['Id']
                 step_concurrency_level = cluster['StepConcurrencyLevel']
 
-                log.info('  Attempting to join cluster %s' % cluster_id)
+                log.info(f'  Attempting to join cluster {cluster_id}')
                 lock_acquired = _attempt_to_lock_cluster(
                     emr_client, cluster_id, self._job_key,
                     cluster=cluster,
@@ -2748,14 +2678,11 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         # this can be expensive because we have to read every file used in
         # bootstrapping, so cache it
         if not self._pool_hash_dict_cached:
-            d = {}
+            d = {
+                'additional_emr_info': self._opts['additional_emr_info'],
+                'applications': sorted((a.lower() for a in self._applications())),
+            }
 
-            # additional_emr_info
-            d['additional_emr_info'] = self._opts['additional_emr_info']
-
-            # applications
-            # (these are case-insensitive)
-            d['applications'] = sorted(a.lower() for a in self._applications())
 
             # bootstrapping
 
@@ -2818,11 +2745,11 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
     def _cluster_name_pooling_suffix(self):
         """Extra info added to the cluster name, for pooling."""
-        if not self._opts['pool_clusters']:
-            return ''
-        else:
-            return _cluster_name_suffix(
-                self._pool_hash(), self._opts['pool_name'])
+        return (
+            _cluster_name_suffix(self._pool_hash(), self._opts['pool_name'])
+            if self._opts['pool_clusters']
+            else ''
+        )
 
     ### EMR-specific Stuff ###
 
@@ -2911,13 +2838,13 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         # or ReleaseLabel (4.x)
         cache['image_version'] = cluster.get('RunningAmiVersion')
         if not cache['image_version']:
-            release_label = cluster.get('ReleaseLabel')
-            if release_label:
+            if release_label := cluster.get('ReleaseLabel'):
                 cache['image_version'] = release_label.lstrip('emr-')
 
-        cache['app_versions'] = dict(
-            (a['Name'].lower(), a.get('Version'))
-            for a in cluster['Applications'])
+        cache['app_versions'] = {
+            a['Name'].lower(): a.get('Version') for a in cluster['Applications']
+        }
+
 
         cache['collection_type'] = cluster.get(
             'InstanceCollectionType', 'INSTANCE_GROUP')
@@ -2944,9 +2871,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
         master = instances[0]
 
-        # can also get private DNS and public IP/DNS, but we don't use this
-        master_private_ip = master.get('PrivateIpAddress')
-        if master_private_ip:  # may not have been assigned yet
+        if master_private_ip := master.get('PrivateIpAddress'):
             cache['master_private_ip'] = master_private_ip
 
     def make_ec2_client(self):
@@ -2985,7 +2910,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
             # keep boto3 from loading a nonsensical region name from configs
             # (see https://github.com/boto/boto3/issues/985)
             region_name = _DEFAULT_AWS_REGION
-            log.debug('creating IAM client to %s' % endpoint_url)
+            log.debug(f'creating IAM client to {endpoint_url}')
         else:
             region_name = None
             log.debug('creating IAM client')
@@ -3028,8 +2953,7 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         This should only be called if you are going to run one or more
         Spark steps.
         """
-        message = self._cluster_spark_support_warning()
-        if message:
+        if message := self._cluster_spark_support_warning():
             log.warning(message)
 
     def _cluster_spark_support_warning(self):
@@ -3116,16 +3040,13 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
         elif '/' in image:
             return image
         else:
-            return 'library/' + image
+            return f'library/{image}'
 
     def _docker_registry(self):
         """Infer the trusted docker registry from the docker image."""
         image = self._docker_image()
 
-        if not image:
-            return None
-        else:
-            return image.split('/')[0]
+        return image.split('/')[0] if image else None
 
     def _docker_cmdenv(self):
         image = self._docker_image()
@@ -3196,9 +3117,9 @@ class EMRJobRunner(HadoopInTheCloudJobRunner, LogInterpretationMixin):
 
         # using urljoin() to avoid a double / when joining host/port with path
         yrm_url = urljoin(
-            'http://{}:{:d}'.format(host, port),
-            '{}/{}'.format(_YRM_BASE_PATH, path)
+            'http://{}:{:d}'.format(host, port), f'{_YRM_BASE_PATH}/{path}'
         )
+
 
         curl_args = [
             'curl',  # always available on EMR
@@ -3278,12 +3199,15 @@ def _fix_configuration_opt(c):
 
     c = dict(c)  # make a copy
 
-    # extra keys
-    extra_keys = (
-        set(c) - set(['Classification', 'Configurations', 'Properties']))
-    if extra_keys:
-        raise ValueError('configuration opt has extra keys: %s' % ', '.join(
-            sorted(extra_keys)))
+    if extra_keys := set(c) - {
+        'Classification',
+        'Configurations',
+        'Properties',
+    }:
+        raise ValueError(
+            f"configuration opt has extra keys: {', '.join(sorted(extra_keys))}"
+        )
+
 
     # Classification
     if 'Classification' not in c:
@@ -3297,8 +3221,7 @@ def _fix_configuration_opt(c):
     if not isinstance(c['Properties'], dict):
         raise TypeError('Properties must be a dict')
 
-    c['Properties'] = dict(
-        (str(k), str(v)) for k, v in c['Properties'].items())
+    c['Properties'] = {str(k): str(v) for k, v in c['Properties'].items()}
 
     # sub-Configurations
     if 'Configurations' in c:
@@ -3324,10 +3247,7 @@ def _fix_subnet_opt(subnet):
         return subnet
 
     subnet = list(subnet)
-    if len(subnet) == 1:
-        return subnet[0]
-    else:
-        return subnet
+    return subnet[0] if len(subnet) == 1 else subnet
 
 
 def _build_instance_group(role, instance_type, num_instances, bid_price):
@@ -3367,7 +3287,4 @@ def _build_instance_group(role, instance_type, num_instances, bid_price):
 
 def _plural(n):
     """Utility for logging messages"""
-    if n == 1:
-        return ''
-    else:
-        return 's'
+    return '' if n == 1 else 's'

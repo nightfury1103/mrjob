@@ -60,9 +60,9 @@ def find_mrjob_conf():
         yield '/etc/mrjob.conf'
 
     for path in candidates():
-        log.debug('Looking for configs in %s' % path)
+        log.debug(f'Looking for configs in {path}')
         if os.path.exists(path):
-            log.info('Using configs in %s' % path)
+            log.info(f'Using configs in {path}')
             return path
     else:
         log.info('No configs found; falling back on auto-configuration')
@@ -96,16 +96,13 @@ class ClearedValue(object):
         self.value = value
 
     def __eq__(self, other):
-        if isinstance(other, ClearedValue):
-            return self.value == other.value
-        else:
-            return False
+        return self.value == other.value if isinstance(other, ClearedValue) else False
 
     def __hash__(self):
         return hash(self.value)
 
     def __repr__(self):
-        return '%s(%s)' % (self.__class__.__name__, repr(self.value))
+        return f'{self.__class__.__name__}({repr(self.value)})'
 
 
 def _cleared_value_constructor(loader, node):
@@ -170,7 +167,7 @@ def _fix_clear_tags(x):
         return [_fix(_strip_clear_tag(item)) for item in x]
 
     elif isinstance(x, dict):
-        d = dict((_fix(k), _fix(v)) for k, v in x.items())
+        d = {_fix(k): _fix(v) for k, v in x.items()}
 
         # handle cleared keys
         for k, v in list(d.items()):
@@ -205,10 +202,7 @@ def _resolve_clear_tags_in_list(items):
 
 def _strip_clear_tag(v):
     """remove the clear tag from the given value."""
-    if isinstance(v, ClearedValue):
-        return v.value
-    else:
-        return v
+    return v.value if isinstance(v, ClearedValue) else v
 
 
 ### reading mrjob.conf ###
@@ -220,14 +214,13 @@ def _conf_object_at_path(conf_path):
     with open(conf_path) as f:
         if yaml:
             return _fix_clear_tags(_load_yaml_with_clear_tag(f))
-        else:
-            try:
-                return json.load(f)
-            except ValueError as e:
-                raise ValueError(
-                    'Could not read JSON from %s\n  %s\n\n'
-                    'If your conf file is in YAML, you need to'
-                    ' `pip install PyYAML` to read it' % (conf_path, str(e)))
+        try:
+            return json.load(f)
+        except ValueError as e:
+            raise ValueError(
+                'Could not read JSON from %s\n  %s\n\n'
+                'If your conf file is in YAML, you need to'
+                ' `pip install PyYAML` to read it' % (conf_path, str(e)))
 
 
 def load_opts_from_mrjob_conf(runner_alias, conf_path=None,
@@ -336,7 +329,7 @@ def load_opts_from_mrjob_confs(runner_alias, conf_paths=None):
                 runner_alias, path, already_loaded=already_loaded) + results
 
     if runner_alias and not any(conf for path, conf in results):
-        log.warning('No configs specified for %s runner' % runner_alias)
+        log.warning(f'No configs specified for {runner_alias} runner')
 
     return results
 
@@ -380,11 +373,7 @@ def combine_values(*values):
 
     The default combiner; good for simple values (booleans, strings, numbers).
     """
-    for v in reversed(values):
-        if v is not None:
-            return v
-    else:
-        return None
+    return next((v for v in reversed(values) if v is not None), None)
 
 
 def combine_lists(*seqs):
@@ -482,11 +471,7 @@ def combine_local_envs(*envs):
 
 
 def _combine_envs_helper(envs, local):
-    if local:
-        pathsep = os.pathsep
-    else:
-        pathsep = ':'
-
+    pathsep = os.pathsep if local else ':'
     result = {}
     for env in envs:
         if env:

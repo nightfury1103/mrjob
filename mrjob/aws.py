@@ -299,5 +299,4 @@ def _boto3_paginate(what, boto3_client, api_call, **api_params):
         if _delay:
             time.sleep(_delay)
 
-        for item in page[what]:
-            yield item
+        yield from page[what]

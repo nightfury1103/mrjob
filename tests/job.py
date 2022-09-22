@@ -35,7 +35,4 @@ def to_dict_key(k):
 
     This only looks into lists, which seems to be good enough for testing
     """
-    if isinstance(k, list):
-        return tuple(to_dict_key(item) for item in k)
-    else:
-        return k
+    return tuple(to_dict_key(item) for item in k) if isinstance(k, list) else k

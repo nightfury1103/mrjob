@@ -38,11 +38,7 @@ class MRSparkOSWalk(MRJob):
         # the JVM with a new CWD, so instead we walk the driver's directory
         # (which executors *would* match on local master if we had a fresh
         # JVM)
-        if self.options.use_driver_cwd:
-            cwd = getcwd()
-        else:
-            cwd = '.'
-
+        cwd = getcwd() if self.options.use_driver_cwd else '.'
         rdd = sc.parallelize([cwd])
         rdd = rdd.flatMap(self.walk_dir)
 

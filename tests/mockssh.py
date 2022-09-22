@@ -93,8 +93,9 @@ def path_for_host(host, environ=None):
         this_host, this_path = kv_pair.split('=')
         if this_host == host:
             return os.path.abspath(this_path)
-    raise KeyError('Host %s is not specified in $MOCK_SSH_ROOTS (%s)' %
-                   (host, environ['MOCK_SSH_ROOTS']))
+    raise KeyError(
+        f"Host {host} is not specified in $MOCK_SSH_ROOTS ({environ['MOCK_SSH_ROOTS']})"
+    )
 
 
 def rel_posix_to_abs_local(host, path, environ=None):
@@ -153,9 +154,7 @@ def main(stdin, stdout, stderr, args, environ):
             components = root.split(os.sep)
             new_root = posixpath.join(*components)
             for filename in files:
-                print(
-                    '/' + posixpath.join(new_root, filename)[prefix_length:],
-                    file=stdout)
+                print(f'/{posixpath.join(new_root, filename)[prefix_length:]}', file=stdout)
         return 0
 
     def cat(host, args):
@@ -205,7 +204,7 @@ def main(stdin, stdout, stderr, args, environ):
 
             if '-i' in remote_args:
                 # Actually check that the key file exists
-                while not remote_args[remote_arg_pos] == '-i':
+                while remote_args[remote_arg_pos] != '-i':
                     remote_arg_pos += 1
 
                 worker_key_file = remote_args[remote_arg_pos + 1]
@@ -224,15 +223,14 @@ def main(stdin, stdout, stderr, args, environ):
             while not remote_args[remote_arg_pos].startswith('hadoop@'):
                 remote_arg_pos += 1
 
-            worker_host = (
-                host + '!%s' % remote_args[remote_arg_pos].split('@')[1])
+            worker_host = f"{host}!{remote_args[remote_arg_pos].split('@')[1]}"
 
             # build bang path
             return run(worker_host, remote_args[remote_arg_pos + 1:],
                        stdout, stderr, environ, worker_key_file)
 
         cmd_line = ' '.join(pipes.quote(x) for x in remote_args)
-        print("Command line not recognized: %s" % cmd_line, file=stderr)
+        print(f"Command line not recognized: {cmd_line}", file=stderr)
 
         return 1
 

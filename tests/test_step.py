@@ -103,13 +103,13 @@ class JarStepTestCase(BasicTestCase):
         kwargs = {
             'jar': 'binks.jar.jar',
         }
-        expected = kwargs.copy()
-        expected.update({
+        expected = kwargs | {
             'type': 'jar',
             'main_class': None,
             'args': [],
             'jobconf': {},
-        })
+        }
+
         self.assertEqual(JarStep(**kwargs).description(0), expected)
 
     def test_bad_arg_types(self):

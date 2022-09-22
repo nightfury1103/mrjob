@@ -80,20 +80,19 @@ def main(cl_args=None):
         raise SystemExit(1)
 
     if step['Status']['State'] != 'FAILED':
-        log.warning('step %s has state %s, not FAILED' %
-                    (step['Id'], step['Status']['State']))
+        log.warning(
+            f"step {step['Id']} has state {step['Status']['State']}, not FAILED"
+        )
+
 
     # interpret logs
-    log.info('Diagnosing step %s (%s)' % (step['Id'], step['Name']))
+    log.info(f"Diagnosing step {step['Id']} ({step['Name']})")
 
     log_interpretation = dict(step_id=step['Id'])
 
     step_type = _infer_step_type(step)
 
-    error = runner._pick_error(log_interpretation, step_type)
-
-    # print error
-    if error:
+    if error := runner._pick_error(log_interpretation, step_type):
         log.error('Probable cause of failure:\n\n%s\n\n' %
                   _format_error(error))
     else:
@@ -102,27 +101,22 @@ def main(cl_args=None):
 
 def _get_step(emr_client, cluster_id, step_id=None):
 
-    # just iterate backwards through steps, rather than filtering
-    # by step ID or status. usually it'll be the last step anyhow
-
     for step in _boto3_paginate('Steps', emr_client, 'list_steps',
                                 ClusterId=cluster_id):
-
         if _step_matches(step, step_id=step_id):
             return step
+    if step_id:
+        log.error(f'step {step_id} not found on cluster {cluster_id}')
     else:
-        if step_id:
-            log.error('step %s not found on cluster %s' %
-                      (step_id, cluster_id))
-        else:
-            log.error('cluster %s has no failed steps' % cluster_id)
+        log.error(f'cluster {cluster_id} has no failed steps')
 
 
 def _step_matches(step, step_id=None):
-    if not step_id:
-        return step['Status']['State'] == 'FAILED'
-    else:
-        return step['Id'] == step_id
+    return (
+        step['Id'] == step_id
+        if step_id
+        else step['Status']['State'] == 'FAILED'
+    )
 
 
 def _infer_step_type(step):

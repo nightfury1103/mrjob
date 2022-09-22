@@ -404,7 +404,7 @@ class CombineValuesTestCase(BasicTestCase):
         self.assertEqual(combine_values([1, 2, 3], []), [])
         self.assertEqual(combine_values((1, 2, 3), ()), ())
         self.assertEqual(combine_values({'a': 'b'}, {}), {})
-        self.assertEqual(combine_values(set([1]), set()), set())
+        self.assertEqual(combine_values({1}, set()), set())
 
 
 class CombineDictsTestCase(BasicTestCase):

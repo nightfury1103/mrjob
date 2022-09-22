@@ -264,7 +264,7 @@ class EMRJobRunnerEndToEndTestCase(MockBoto3TestCase):
         mr_job.sandbox()
 
         self.add_mock_s3_data({'walrus': {}})
-        self.mock_emr_failures = set([('j-MOCKCLUSTER0', 0)])
+        self.mock_emr_failures = {('j-MOCKCLUSTER0', 0)}
 
         log = self.start(patch('mrjob.emr.log'))
 
@@ -393,7 +393,7 @@ class ExistingClusterTestCase(MockBoto3TestCase):
         mr_job.sandbox()
 
         self.add_mock_s3_data({'walrus': {}})
-        self.mock_emr_failures = set([('j-MOCKCLUSTER0', 0)])
+        self.mock_emr_failures = {('j-MOCKCLUSTER0', 0)}
 
         with mr_job.make_runner() as runner:
             self.assertIsInstance(runner, EMRJobRunner)
@@ -580,10 +580,10 @@ class IAMTestCase(MockBoto3TestCase):
         def forbidding_boto3_client(service_name, **kwargs):
             if service_name == 'iam':
                 raise ClientError(
-                    dict(
-                        Error=dict(),
-                        ResponseMetadata=dict(HTTPStatusCode=403)
-                    ), 'WhateverApiCall')
+                    dict(Error={}, ResponseMetadata=dict(HTTPStatusCode=403)),
+                    'WhateverApiCall',
+                )
+
             else:
                 # pass through other services
                 return boto3_client(service_name, **kwargs)
@@ -941,10 +941,16 @@ class InstanceGroupAndFleetTestCase(MockBoto3TestCase):
         # see #1316)
         role_to_actual = {}
         for ig in instance_groups:
-            info = dict(
-                (field, ig.get(field))
-                for field in ('BidPrice', 'InstanceType',
-                              'Market', 'RequestedInstanceCount'))
+            info = {
+                field: ig.get(field)
+                for field in (
+                    'BidPrice',
+                    'InstanceType',
+                    'Market',
+                    'RequestedInstanceCount',
+                )
+            }
+
 
             role_to_actual[ig['InstanceGroupType']] = info
 
@@ -952,11 +958,12 @@ class InstanceGroupAndFleetTestCase(MockBoto3TestCase):
         role_to_expected = {}
         for role, (num, instance_type, bid_price) in expected.items():
             expected = dict(
-                BidPrice=(bid_price if bid_price else None),
+                BidPrice=bid_price or None,
                 InstanceType=instance_type,
                 Market=(u'SPOT' if bid_price else u'ON_DEMAND'),
                 RequestedInstanceCount=num,
             )
+
 
             role_to_expected[role.upper()] = expected
 
@@ -1320,7 +1327,7 @@ class InstanceGroupAndFleetTestCase(MockBoto3TestCase):
 ### tests for error parsing ###
 
 BUCKET = 'walrus'
-BUCKET_URI = 's3://' + BUCKET + '/'
+BUCKET_URI = f's3://{BUCKET}/'
 
 LOG_DIR = 'j-CLUSTERID/'
 
@@ -1350,10 +1357,10 @@ USEFUL_HADOOP_ERROR = (
     b' and is not empty')
 
 BORING_HADOOP_ERROR = b'Job not Successful!'
-TASK_ATTEMPTS_DIR = LOG_DIR + 'task-attempts/'
+TASK_ATTEMPTS_DIR = f'{LOG_DIR}task-attempts/'
 
-ATTEMPT_0_DIR = TASK_ATTEMPTS_DIR + 'attempt_201007271720_0001_m_000126_0/'
-ATTEMPT_1_DIR = TASK_ATTEMPTS_DIR + 'attempt_201007271720_0001_m_000126_0/'
+ATTEMPT_0_DIR = f'{TASK_ATTEMPTS_DIR}attempt_201007271720_0001_m_000126_0/'
+ATTEMPT_1_DIR = f'{TASK_ATTEMPTS_DIR}attempt_201007271720_0001_m_000126_0/'
 
 
 def make_input_uri_line(input_uri):
@@ -1521,13 +1528,16 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
             pass
 
         # test bootstrap with a file, bootstrap_mrjob
-        runner = EMRJobRunner(conf_paths=[],
-                              image_version=image_version,
-                              bootstrap=[
-                                  expected_python_bin + ' ' +
-                                  foo_py_path + '#bar.py',
-                                  's3://walrus/scripts/ohnoes.sh#'],
-                              bootstrap_mrjob=True)
+        runner = EMRJobRunner(
+            conf_paths=[],
+            image_version=image_version,
+            bootstrap=[
+                f'{expected_python_bin} {foo_py_path}#bar.py',
+                's3://walrus/scripts/ohnoes.sh#',
+            ],
+            bootstrap_mrjob=True,
+        )
+
 
         runner._add_bootstrap_files_for_upload()
 
@@ -1556,18 +1566,11 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
             name = runner._bootstrap_dir_mgr.name('file', path, name=name)
 
             if image_version and not version_gte(image_version, '4'):
-                self.assertIn(
-                    '  hadoop fs -copyToLocal %s $__mrjob_PWD/%s' % (
-                        uri, name),
-                    lines)
+                self.assertIn(f'  hadoop fs -copyToLocal {uri} $__mrjob_PWD/{name}', lines)
             else:
-                self.assertIn(
-                    '  aws s3 cp %s $__mrjob_PWD/%s' % (uri, name),
-                    lines)
+                self.assertIn(f'  aws s3 cp {uri} $__mrjob_PWD/{name}', lines)
 
-            self.assertIn(
-                '  chmod u+rx $__mrjob_PWD/%s' % (name,),
-                lines)
+            self.assertIn(f'  chmod u+rx $__mrjob_PWD/{name}', lines)
 
         # check files get downloaded
         assertScriptDownloads(foo_py_path, 'bar.py')
@@ -1576,8 +1579,7 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
         # check scripts get run
 
         # bootstrap
-        self.assertIn('  ' + expected_python_bin + ' $__mrjob_PWD/bar.py',
-                      lines)
+        self.assertIn(f'  {expected_python_bin} $__mrjob_PWD/bar.py', lines)
         self.assertIn('  $__mrjob_PWD/ohnoes.sh', lines)
 
     def test_create_master_bootstrap_script(self):
@@ -1674,8 +1676,7 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
         with open(action_path, 'w') as f:
             f.write('for $pkg in $@; do sudo apt-get install $pkg; done\n')
 
-        bootstrap_actions = [
-            action_path + ' python-scipy mysql-server']
+        bootstrap_actions = [f'{action_path} python-scipy mysql-server']
 
         runner = EMRJobRunner(conf_paths=[],
                               bootstrap_actions=bootstrap_actions,
@@ -1717,8 +1718,7 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
         foo_tar_gz = make_archive(
             os.path.join(self.tmp_dir, 'foo'), 'gztar', foo_dir)
 
-        runner = EMRJobRunner(conf_paths=[],
-                              bootstrap=['cd ' + foo_tar_gz + '#/'])
+        runner = EMRJobRunner(conf_paths=[], bootstrap=[f'cd {foo_tar_gz}#/'])
 
         runner._add_bootstrap_files_for_upload()
 
@@ -1730,9 +1730,11 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
 
         self.assertIn('  __mrjob_TMP=$(mktemp -d)', lines)
 
-        self.assertIn(('  aws s3 cp %s $__mrjob_TMP/foo.tar.gz' %
-                       runner._upload_mgr.uri(foo_tar_gz)),
-                      lines)
+        self.assertIn(
+            f'  aws s3 cp {runner._upload_mgr.uri(foo_tar_gz)} $__mrjob_TMP/foo.tar.gz',
+            lines,
+        )
+
 
         self.assertIn(
             '  mkdir $__mrjob_PWD/foo;'
@@ -1750,8 +1752,7 @@ class MasterBootstrapScriptTestCase(MockBoto3TestCase):
     def test_bootstrap_dir(self):
         foo_dir = self.makedirs('foo')
 
-        runner = EMRJobRunner(conf_paths=[],
-                              bootstrap=['cd ' + foo_dir + '/#'])
+        runner = EMRJobRunner(conf_paths=[], bootstrap=[f'cd {foo_dir}/#'])
 
         runner._add_bootstrap_files_for_upload()
 
@@ -1809,7 +1810,9 @@ class MasterNodeSetupScriptTestCase(MockBoto3TestCase):
         # don't need to manage file:/// URI
         self.assertEqual(
             runner._master_node_setup_mgr.paths(),
-            set(['cookie.jar', 's3://pooh/honey.jar']))
+            {'cookie.jar', 's3://pooh/honey.jar'},
+        )
+
 
         uploaded_paths = set(runner._upload_mgr.path_to_uri())
         self.assertIn('cookie.jar', uploaded_paths)
@@ -2244,15 +2247,20 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
         self.assertEqual(step['HadoopJarStep']['Jar'], 'mockstreaming.jar')
 
         self.assertEqual(
-            step['HadoopJarStep']['Args'], [
+            step['HadoopJarStep']['Args'],
+            [
                 '-files',
-                '%s#my_job.py' % (
-                    runner._dest_in_wd_mirror('my_job.py', 'my_job.py')),
-                '-D', 'mapreduce.job.reduces=0',
-                '-input', 'input', '-output', 'output',
+                f"{runner._dest_in_wd_mirror('my_job.py', 'my_job.py')}#my_job.py",
+                '-D',
+                'mapreduce.job.reduces=0',
+                '-input',
+                'input',
+                '-output',
+                'output',
                 '-mapper',
-                '%s my_job.py --step-num=0 --mapper' % PYTHON_BIN,
-            ])
+                f'{PYTHON_BIN} my_job.py --step-num=0 --mapper',
+            ],
+        )
 
     def test_basic_reducer(self):
         runner = self._runner_with_steps(
@@ -2261,15 +2269,20 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
         step = runner._build_step(0)
 
         self.assertEqual(
-            step['HadoopJarStep']['Args'], [
+            step['HadoopJarStep']['Args'],
+            [
                 '-files',
-                '%s#my_job.py' % (
-                    runner._dest_in_wd_mirror('my_job.py', 'my_job.py')),
-                '-input', 'input', '-output', 'output',
-                '-mapper', 'cat',
+                f"{runner._dest_in_wd_mirror('my_job.py', 'my_job.py')}#my_job.py",
+                '-input',
+                'input',
+                '-output',
+                'output',
+                '-mapper',
+                'cat',
                 '-reducer',
-                '%s my_job.py --step-num=0 --reducer' % PYTHON_BIN,
-            ])
+                f'{PYTHON_BIN} my_job.py --step-num=0 --reducer',
+            ],
+        )
 
     def test_pre_filters(self):
         runner = self._runner_with_steps([
@@ -2287,11 +2300,14 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
         step = runner._build_step(0)
 
         self.assertEqual(
-            step['HadoopJarStep']['Args'], [
+            step['HadoopJarStep']['Args'],
+            [
                 '-files',
-                '%s#my_job.py' % (
-                    runner._dest_in_wd_mirror('my_job.py', 'my_job.py')),
-                '-input', 'input', '-output', 'output',
+                f"{runner._dest_in_wd_mirror('my_job.py', 'my_job.py')}#my_job.py",
+                '-input',
+                'input',
+                '-output',
+                'output',
                 '-mapper',
                 "/bin/sh -x -c 'set -e; grep anything | %s"
                 " my_job.py --step-num=0 --mapper'" % PYTHON_BIN,
@@ -2301,7 +2317,8 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
                 '-reducer',
                 "/bin/sh -x -c 'set -e; grep something | %s"
                 " my_job.py --step-num=0 --reducer'" % PYTHON_BIN,
-            ])
+            ],
+        )
 
     def test_pre_filter_escaping(self):
         runner = self._runner_with_steps(
@@ -2313,17 +2330,22 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
         step = runner._build_step(0)
 
         self.assertEqual(
-            step['HadoopJarStep']['Args'], [
+            step['HadoopJarStep']['Args'],
+            [
                 '-files',
-                '%s#my_job.py' % (
-                    runner._dest_in_wd_mirror('my_job.py', 'my_job.py')),
-                '-D', 'mapreduce.job.reduces=0',
-                '-input', 'input', '-output', 'output',
+                f"{runner._dest_in_wd_mirror('my_job.py', 'my_job.py')}#my_job.py",
+                '-D',
+                'mapreduce.job.reduces=0',
+                '-input',
+                'input',
+                '-output',
+                'output',
                 '-mapper',
                 "/bin/sh -x -c 'set -e; bash -c '\\''grep"
                 " '\\''\\'\\'''\\''anything'\\''\\'\\'''\\'''\\'' | %s"
                 " my_job.py --step-num=0 --mapper'" % PYTHON_BIN,
-            ])
+            ],
+        )
 
     def test_custom_streaming_jar_and_step_arg_prefix(self):
         # this tests integration with custom jar options. See
@@ -2341,16 +2363,22 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
         self.assertEqual(step['HadoopJarStep']['Jar'], 'launch.jar')
 
         self.assertEqual(
-            step['HadoopJarStep']['Args'], [
-                'streaming', '-v',
+            step['HadoopJarStep']['Args'],
+            [
+                'streaming',
+                '-v',
                 '-files',
-                '%s#my_job.py' % (
-                    runner._dest_in_wd_mirror('my_job.py', 'my_job.py')),
-                '-D', 'mapreduce.job.reduces=0',
-                '-input', 'input', '-output', 'output',
+                f"{runner._dest_in_wd_mirror('my_job.py', 'my_job.py')}#my_job.py",
+                '-D',
+                'mapreduce.job.reduces=0',
+                '-input',
+                'input',
+                '-output',
+                'output',
                 '-mapper',
-                '%s my_job.py --step-num=0 --mapper' % PYTHON_BIN,
-            ])
+                f'{PYTHON_BIN} my_job.py --step-num=0 --mapper',
+            ],
+        )
 
     def test_hadoop_args_for_step(self):
         self.start(patch(
@@ -2364,17 +2392,24 @@ class BuildStreamingStepTestCase(MockBoto3TestCase):
         step = runner._build_step(0)
 
         self.assertEqual(
-            step['HadoopJarStep']['Args'], [
+            step['HadoopJarStep']['Args'],
+            [
                 '-files',
-                '%s#my_job.py' % (
-                    runner._dest_in_wd_mirror('my_job.py', 'my_job.py')),
-                '-D', 'mapreduce.job.reduces=0',
-                '-libjars', '/home/hadoop/dora.jar',
-                '-D', 'foo=bar',
-                '-input', 'input', '-output', 'output',
+                f"{runner._dest_in_wd_mirror('my_job.py', 'my_job.py')}#my_job.py",
+                '-D',
+                'mapreduce.job.reduces=0',
+                '-libjars',
+                '/home/hadoop/dora.jar',
+                '-D',
+                'foo=bar',
+                '-input',
+                'input',
+                '-output',
+                'output',
                 '-mapper',
-                '%s my_job.py --step-num=0 --mapper' % PYTHON_BIN,
-            ])
+                f'{PYTHON_BIN} my_job.py --step-num=0 --mapper',
+            ],
+        )
 
 
 class LibjarPathsTestCase(MockBoto3TestCase):
@@ -2398,10 +2433,10 @@ class LibjarPathsTestCase(MockBoto3TestCase):
         self.assertEqual(
             runner._libjar_paths(),
             [
-                working_dir + '/cookie.jar',
-                working_dir + '/honey.jar',
+                f'{working_dir}/cookie.jar',
+                f'{working_dir}/honey.jar',
                 '/left/dora.jar',
-            ]
+            ],
         )
 
 
@@ -2514,10 +2549,10 @@ class JarStepTestCase(MockBoto3TestCase):
 
             working_dir = runner._master_node_setup_working_dir()
 
-            self.assertEqual(step_args,
-                             ['before',
-                              '-libjars', working_dir + '/libfake.jar',
-                              'after'])
+            self.assertEqual(
+                step_args,
+                ['before', '-libjars', f'{working_dir}/libfake.jar', 'after'],
+            )
 
     def test_jar_on_s3(self):
         self.add_mock_s3_data({'dubliners': {'whiskeyinthe.jar': b''}})
@@ -2680,9 +2715,10 @@ class SparkStepTestCase(MockBoto3TestCase):
                     script_uri,
                     '--step-num=0',
                     '--spark',
-                    input1_uri + ',' + input2_uri,
+                    f'{input1_uri},{input2_uri}',
                     runner._output_dir,
-                ])
+                ],
+            )
 
 
 class SparkJarStepTestCase(MockBoto3TestCase):
@@ -2814,10 +2850,10 @@ class SparkScriptStepTestCase(MockBoto3TestCase):
                 [
                     '<spark submit args>',
                     script_uri,
-                    input1_uri + ',' + input2_uri,
+                    f'{input1_uri},{input2_uri}',
                     '-o',
                     runner._output_dir,
-                ]
+                ],
             )
 
 
@@ -3413,9 +3449,7 @@ class WaitForLogsOnS3TestCase(MockBoto3TestCase):
         self.assertTrue(self.mock_log.info.called)
         self.mock_sleep.assert_called_once_with(600)
 
-        self.assertEqual(
-            self.runner._waited_for_logs_on_s3,
-            waited | set([step_num]))
+        self.assertEqual(self.runner._waited_for_logs_on_s3, waited | {step_num})
 
     def assert_silently_exits(self):
         state = self.cluster['Status']['State']
@@ -3473,7 +3507,7 @@ class WaitForLogsOnS3TestCase(MockBoto3TestCase):
         self.mock_sleep.assert_called_once_with(600)
 
         # still shouldn't make user ctrl-c again
-        self.assertEqual(self.runner._waited_for_logs_on_s3, set([0]))
+        self.assertEqual(self.runner._waited_for_logs_on_s3, {0})
 
     def test_already_waited_ten_minutes(self):
         self.runner._waited_for_logs_on_s3.add(0)
@@ -3537,9 +3571,11 @@ class StreamLogDirsTestCase(MockBoto3TestCase):
         self.log.info.reset_mock()
 
         if read_logs:
-            self.assertEqual(next(results), [
-                's3://bucket/logs/j-CLUSTERID/' + expected_s3_dir_name,
-            ])
+            self.assertEqual(
+                next(results),
+                [f's3://bucket/logs/j-CLUSTERID/{expected_s3_dir_name}'],
+            )
+
             self.assertTrue(
                 self._wait_for_logs_on_s3.called)
             self.log.info.assert_called_once_with(
@@ -3593,9 +3629,11 @@ class StreamLogDirsTestCase(MockBoto3TestCase):
             if ssh and expected_hdfs_dir_name:
                 self.log.info.reset_mock()
 
-                self.assertEqual(next(results), [
-                    'hdfs:///tmp/hadoop-yarn/staging/' + expected_hdfs_dir_name
-                ])
+                self.assertEqual(
+                    next(results),
+                    [f'hdfs:///tmp/hadoop-yarn/staging/{expected_hdfs_dir_name}'],
+                )
+
                 self.assertFalse(
                     self._wait_for_logs_on_s3.called)
                 self.log.info.assert_called_once_with(
@@ -3606,9 +3644,11 @@ class StreamLogDirsTestCase(MockBoto3TestCase):
             if ssh and expected_dir_name:
                 self.log.info.reset_mock()
 
-                self.assertEqual(next(results), [
-                    'ssh://master/mnt/var/log/' + expected_dir_name,
-                ])
+                self.assertEqual(
+                    next(results),
+                    [f'ssh://master/mnt/var/log/{expected_dir_name}'],
+                )
+
                 self.assertFalse(
                     self._wait_for_logs_on_s3.called)
                 self.log.info.assert_called_once_with(
@@ -3618,9 +3658,11 @@ class StreamLogDirsTestCase(MockBoto3TestCase):
             if expected_s3_dir_name:
                 self.log.info.reset_mock()
 
-                self.assertEqual(next(results), [
-                    's3://bucket/logs/j-CLUSTERID/' + expected_s3_dir_name,
-                ])
+                self.assertEqual(
+                    next(results),
+                    [f's3://bucket/logs/j-CLUSTERID/{expected_s3_dir_name}'],
+                )
+
                 self.assertTrue(
                     self._wait_for_logs_on_s3.called)
                 self.log.info.assert_called_once_with(
@@ -3757,12 +3799,16 @@ class StreamLogDirsTestCase(MockBoto3TestCase):
                 if application_id:
                     local_path = posixpath.join(local_path, application_id)
 
-                self.assertEqual(next(results), [
-                    'ssh://master/mnt/var/log/' + expected_dir_name,
-                    'ssh://master!core1/mnt/var/log/' + expected_dir_name,
-                    'ssh://master!core2/mnt/var/log/' + expected_dir_name,
-                    'ssh://master!task1/mnt/var/log/' + expected_dir_name,
-                ])
+                self.assertEqual(
+                    next(results),
+                    [
+                        f'ssh://master/mnt/var/log/{expected_dir_name}',
+                        f'ssh://master!core1/mnt/var/log/{expected_dir_name}',
+                        f'ssh://master!core2/mnt/var/log/{expected_dir_name}',
+                        f'ssh://master!task1/mnt/var/log/{expected_dir_name}',
+                    ],
+                )
+
                 self.assertFalse(self.log.warning.called)
                 self.log.info.assert_called_once_with(
                     'Looking for task logs in /mnt/var/log/' +
@@ -3773,9 +3819,11 @@ class StreamLogDirsTestCase(MockBoto3TestCase):
 
             self.log.reset_mock()
 
-            self.assertEqual(next(results), [
-                's3://bucket/logs/j-CLUSTERID/' + expected_s3_dir_name,
-            ])
+            self.assertEqual(
+                next(results),
+                [f's3://bucket/logs/j-CLUSTERID/{expected_s3_dir_name}'],
+            )
+
             self.assertTrue(
                 self._wait_for_logs_on_s3.called)
             self.log.info.assert_called_once_with(
@@ -4079,8 +4127,8 @@ class EMRApplicationsTestCase(MockBoto3TestCase):
             self.launch(runner)
             cluster = runner._describe_cluster()
 
-            applications = set(a['Name'] for a in cluster['Applications'])
-            self.assertEqual(applications, set(['hadoop']))
+            applications = {a['Name'] for a in cluster['Applications']}
+            self.assertEqual(applications, {'hadoop'})
 
     def test_default_on_4_x_ami(self):
         job = MRTwoStepJob(['-r', 'emr', '--image-version', '4.3.0'])
@@ -4092,8 +4140,8 @@ class EMRApplicationsTestCase(MockBoto3TestCase):
             self.launch(runner)
             cluster = runner._describe_cluster()
 
-            applications = set(a['Name'] for a in cluster['Applications'])
-            self.assertEqual(applications, set(['Hadoop']))
+            applications = {a['Name'] for a in cluster['Applications']}
+            self.assertEqual(applications, {'Hadoop'})
 
     def test_applications_requires_4_x_ami(self):
         job = MRTwoStepJob(
@@ -4111,15 +4159,13 @@ class EMRApplicationsTestCase(MockBoto3TestCase):
         job.sandbox()
 
         with job.make_runner() as runner:
-            self.assertEqual(runner._applications(),
-                             set(['Hadoop', 'Mahout']))
+            self.assertEqual(runner._applications(), {'Hadoop', 'Mahout'})
 
             self.launch(runner)
             cluster = runner._describe_cluster()
 
-            applications = set(a['Name'] for a in cluster['Applications'])
-            self.assertEqual(applications,
-                             set(['Hadoop', 'Mahout']))
+            applications = {a['Name'] for a in cluster['Applications']}
+            self.assertEqual(applications, {'Hadoop', 'Mahout'})
 
     def test_implicit_hadoop(self):
         job = MRTwoStepJob(
@@ -4129,15 +4175,13 @@ class EMRApplicationsTestCase(MockBoto3TestCase):
         with job.make_runner() as runner:
             # we explicitly add Hadoop so we can see Hadoop version in
             # the cluster description from the API
-            self.assertEqual(runner._applications(),
-                             set(['Hadoop', 'Mahout']))
+            self.assertEqual(runner._applications(), {'Hadoop', 'Mahout'})
 
             self.launch(runner)
             cluster = runner._describe_cluster()
 
-            applications = set(a['Name'] for a in cluster['Applications'])
-            self.assertEqual(applications,
-                             set(['Hadoop', 'Mahout']))
+            applications = {a['Name'] for a in cluster['Applications']}
+            self.assertEqual(applications, {'Hadoop', 'Mahout'})
 
 
 class EMRConfigurationsTestCase(MockBoto3TestCase):
@@ -5085,9 +5129,7 @@ class SparkPyFilesTestCase(MockBoto3TestCase):
         egg1_path = self.makefile('dragon.egg')
         egg2_path = self.makefile('horton.egg')
 
-        job = MRNullSpark([
-            '-r', 'emr',
-            '--py-files', '%s,%s' % (egg1_path, egg2_path)])
+        job = MRNullSpark(['-r', 'emr', '--py-files', f'{egg1_path},{egg2_path}'])
         job.sandbox()
 
         with job.make_runner() as runner:
@@ -5428,8 +5470,7 @@ class BadBashWorkaroundTestCase(MockBoto3TestCase):
             self.assertTrue(path)
             with open(path) as script:
                 lines = list(script)
-                self.assertEqual(lines[0].strip(),
-                                 '#!%s' % cmd_line(expected_bin))
+                self.assertEqual(lines[0].strip(), f'#!{cmd_line(expected_bin)}')
                 # everything up to first newline is a pre-command
                 pre_commands = []
                 for line in lines[1:]:

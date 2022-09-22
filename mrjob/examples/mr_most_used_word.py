@@ -49,7 +49,7 @@ class MRMostUsedWord(MRJob):
         stop_words_path = self.options.stop_words_file or 'stop_words.txt'
 
         with open(stop_words_path) as f:
-            self.stop_words = set(line.strip() for line in f)
+            self.stop_words = {line.strip() for line in f}
 
     def mapper_get_words(self, _, line):
         # yield each word in the line

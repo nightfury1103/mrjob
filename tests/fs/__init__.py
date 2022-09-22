@@ -31,7 +31,7 @@ class MockSubprocessTestCase(SandboxedTestCase):
 
         self.addCleanup(setattr, module, 'Popen', original_popen)
 
-    def _make_popen_class(outer, func, env):
+    def _make_popen_class(self, func, env):
 
         class MockPopen(object):
 

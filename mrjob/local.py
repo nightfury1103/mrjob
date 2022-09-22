@@ -125,14 +125,13 @@ class LocalMRJobRunner(SimMRJobRunner, MRJobBinRunner):
         spark_submit_args = self._args_for_spark_step(step_num)
 
         env = dict(os.environ)
-        env.update(self._spark_cmdenv(step_num))
+        env |= self._spark_cmdenv(step_num)
 
         returncode, step_interpretation = self._run_spark_submit(
             spark_submit_args, env, record_callback=_log_log4j_record)
 
         if returncode:
-            error = _pick_error(dict(step=step_interpretation))
-            if error:
+            if error := _pick_error(dict(step=step_interpretation)):
                 _log_probable_cause_of_failure(log, error)
 
             reason = str(CalledProcessError(returncode, spark_submit_args))
@@ -184,8 +183,7 @@ class LocalMRJobRunner(SimMRJobRunner, MRJobBinRunner):
         if self.fs.exists(stderr_path):  # it should, but just to be safe
             # log-parsing code expects "str", not bytes; open in text mode
             with open(stderr_path) as stderr:
-                task_error = _parse_task_stderr(stderr)
-                if task_error:
+                if task_error := _parse_task_stderr(stderr):
                     task_error['path'] = stderr_path
                     error = dict(
                         split=dict(path=input_path),
@@ -264,7 +262,7 @@ def _invoke_task_in_subprocess(
         args, num_steps,
         stdin, stdout, stderr, wd, env):
     """A pickleable function that invokes a task in a subprocess."""
-    log.debug('> %s' % cmd_line(args))
+    log.debug(f'> {cmd_line(args)}')
 
     try:
         check_call(args, stdin=stdin, stdout=stdout, stderr=stderr,
@@ -315,15 +313,13 @@ def _sort_lines_with_sort_bin(input_paths, output_path, sort_bin,
 
         with open(output_path, 'wb') as output:
             args = sort_bin + list(input_paths)
-            log.debug('> %s' % cmd_line(args))
+            log.debug(f'> {cmd_line(args)}')
 
             try:
                 check_call(args, stdout=output, env=env)
                 return
             except CalledProcessError:
-                log.error(
-                    '`%s` failed, falling back to in-memory sort' %
-                    cmd_line(sort_bin))
+                log.error(f'`{cmd_line(sort_bin)}` failed, falling back to in-memory sort')
             except OSError:
                 log.error(
                     'no sort binary, falling back to in-memory sort')

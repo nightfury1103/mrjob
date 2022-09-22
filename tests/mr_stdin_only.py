@@ -31,8 +31,7 @@ class MRStdinOnly(MRJob):
         yield (name, sum(counts))
 
     def _read_input(self):
-        for line in self.stdin:
-            yield line
+        yield from self.stdin
 
 
 if __name__ == '__main__':

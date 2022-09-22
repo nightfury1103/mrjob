@@ -202,11 +202,9 @@ class MockEMRClient(object):
                 # not entirely sure why boto3 1.4.4 uses a different format for
                 # us-east-1, but there it is. according to AWS docs, the
                 # host name is elasticmapreduce.<region>.amazonaws.com.
-                endpoint_url = (
-                    'https://elasticmapreduce.%s.amazonaws.com' % region_name)
+                endpoint_url = f'https://elasticmapreduce.{region_name}.amazonaws.com'
             else:
-                endpoint_url = (
-                    'https://%s.elasticmapreduce.amazonaws.com' % region_name)
+                endpoint_url = f'https://{region_name}.elasticmapreduce.amazonaws.com'
 
         self.meta = MockClientMeta(
             endpoint_url=endpoint_url,
@@ -318,8 +316,7 @@ class MockEMRClient(object):
             running_ami_version = ReleaseLabel.lstrip('emr-')
 
             if not version_gte(running_ami_version, '4'):
-                raise _error('The supplied release label is invalid: %s.' %
-                             ReleaseLabel)
+                raise _error(f'The supplied release label is invalid: {ReleaseLabel}.')
 
             cluster['ReleaseLabel'] = ReleaseLabel
         else:
@@ -344,21 +341,16 @@ class MockEMRClient(object):
                     'Cannot specify supported products when release label is'
                     ' used. Specify applications instead.')
 
-            application_names = set(
-                a['Name'] for a in kwargs.pop('Applications', []))
+            application_names = {a['Name'] for a in kwargs.pop('Applications', [])}
 
             # if Applications is set but doesn't include Hadoop, the
             # cluster description won't either! (Even though Hadoop is
             # in fact installed.)
             if not application_names:
-                application_names = set(['Hadoop'])
+                application_names = {'Hadoop'}
 
             for app_name in sorted(application_names):
-                if app_name == 'Hadoop':
-                    version = hadoop_version
-                else:
-                    version = DUMMY_APPLICATION_VERSION
-
+                version = hadoop_version if app_name == 'Hadoop' else DUMMY_APPLICATION_VERSION
                 cluster['Applications'].append(
                     dict(Name=app_name, Version=version))
         else:
@@ -437,8 +429,9 @@ class MockEMRClient(object):
         # catch extra params
         if kwargs:
             raise NotImplementedError(
-                'mock RunJobFlow does not support these parameters: %s' %
-                ', '.join(sorted(kwargs)))
+                f"mock RunJobFlow does not support these parameters: {', '.join(sorted(kwargs))}"
+            )
+
 
         self.mock_emr_clusters[cluster['Id']] = cluster
 
@@ -588,9 +581,8 @@ class MockEMRClient(object):
 
         if Instances:
             raise NotImplementedError(
-                'mock %s does not support these parameters: %s' % (
-                    operation_name,
-                    ', '.join('Instances.%s' % k for k in sorted(Instances))))
+                f"mock {operation_name} does not support these parameters: {', '.join(f'Instances.{k}' for k in sorted(Instances))}"
+            )
 
     def _add_instance_fleets(self, operation_name, InstanceFleets, cluster,
                              now=None):
@@ -734,10 +726,9 @@ class MockEMRClient(object):
             InstanceTypeConfigs, Name, InstanceFleetType):
         """Validate InstanceTypeConfigs from fleet request, and convert
         to InstanceTypeSpecifications (from ListInstanceFleets)."""
-        specs = []
-
         instance_types = set()  # so we don't get duplicates
 
+        specs = []
         for InstanceTypeConfig in InstanceTypeConfigs:
             _validate_param(InstanceTypeConfig, 'InstanceType', string_types)
             InstanceType = InstanceTypeConfig['InstanceType']
@@ -745,9 +736,9 @@ class MockEMRClient(object):
             if InstanceType in instance_types:
                 raise _ValidationException(
                     operation_name,
-                    'The instance fleet: %s contains duplicate instance types'
-                    ' [%s]. Revise the configuration and resubmit.' % (
-                        Name or 'null', InstanceType))
+                    f"The instance fleet: {Name or 'null'} contains duplicate instance types [{InstanceType}]. Revise the configuration and resubmit.",
+                )
+
 
             specs.append(
                 self._instance_type_config_to_spec(
@@ -800,7 +791,7 @@ class MockEMRClient(object):
             BidPrice = InstanceTypeConfig.pop('BidPrice')
 
             try:
-                if not float(BidPrice) > 0:
+                if float(BidPrice) <= 0:
                     raise _error('The bid price is negative or zero.')
             except (TypeError, ValueError):
                 raise _error(
@@ -1024,7 +1015,7 @@ class MockEMRClient(object):
                 # simulate bid price validation
                 BidPrice = InstanceGroup.pop('BidPrice')
                 try:
-                    if not float(BidPrice) > 0:
+                    if float(BidPrice) <= 0:
                         raise _error('The bid price is negative or zero.')
                 except (TypeError, ValueError):
                     raise _error(
@@ -1101,9 +1092,11 @@ class MockEMRClient(object):
         else:
             # otherwise, only active and pending steps count
             num_active_steps = sum(
-                1 for step in cluster['_Steps']
-                if step['Status']['State'] in (
-                    'PENDING', 'PENDING_CANCELLED', 'RUNNING'))
+                step['Status']['State']
+                in ('PENDING', 'PENDING_CANCELLED', 'RUNNING')
+                for step in cluster['_Steps']
+            )
+
 
             if num_active_steps + len(Steps) > STEP_ADD_LIMIT:
                 raise _ValidationException(
@@ -1198,7 +1191,7 @@ class MockEMRClient(object):
 
         for Tag in Tags:
             _validate_param_type(Tag, dict)
-            if set(Tag) > set(['Key', 'Value']):
+            if set(Tag) > {'Key', 'Value'}:
                 raise ParamValidationError(report='Unknown parameter in Tags')
 
             Key = Tag.get('Key')
@@ -1329,9 +1322,20 @@ class MockEMRClient(object):
                     cluster['Status']['State'] not in ClusterStates):
                 continue
 
-            cluster_summaries.append(deepcopy(dict(
-                (k, cluster[k])
-                for k in ['Id', 'Name', 'Status', 'NormalizedInstanceHours'])))
+            cluster_summaries.append(
+                deepcopy(
+                    {
+                        k: cluster[k]
+                        for k in [
+                            'Id',
+                            'Name',
+                            'Status',
+                            'NormalizedInstanceHours',
+                        ]
+                    }
+                )
+            )
+
 
         return dict(Clusters=cluster_summaries)
 
@@ -1428,7 +1432,7 @@ class MockEMRClient(object):
         mock_steps = cluster['_Steps'][-STEP_LIST_LIMIT:]
 
         # this is triggered even if StepIds and StepStates are []
-        if not (StepIds is None or StepStates is None):
+        if StepIds is not None and StepStates is not None:
             raise _InvalidRequestException(
                 operation_name,
                 'Cannot specify both StepIds and StepStates.')
@@ -1438,7 +1442,7 @@ class MockEMRClient(object):
         if StepIds:
             _validate_param_type(StepIds, (list, tuple))
 
-            steps_by_id = dict((s['Id'], s) for s in mock_steps)
+            steps_by_id = {s['Id']: s for s in mock_steps}
 
             for step_id in StepIds:
                 if step_id not in steps_by_id:
@@ -1449,11 +1453,11 @@ class MockEMRClient(object):
                 # duplicate steps are allowed
                 results.append(steps_by_id[step_id])
         else:
-            for step in reversed(mock_steps):
-                if StepStates and step['Status']['State'] not in StepStates:
-                    continue
-
-                results.append(step)
+            results.extend(
+                step
+                for step in reversed(mock_steps)
+                if not StepStates or step['Status']['State'] in StepStates
+            )
 
         return [deepcopy(step) for step in results]
 
@@ -1524,12 +1528,14 @@ class MockEMRClient(object):
     def _get_step_output_uri(self, step_args):
         """Figure out the output dir for a step by parsing step.args
         and looking for an -output argument."""
-        # parse in reverse order, in case there are multiple -output args
-        for i, arg in reversed(list(enumerate(step_args[:-1]))):
-            if arg == '-output':
-                return step_args[i + 1]
-        else:
-            return None
+        return next(
+            (
+                step_args[i + 1]
+                for i, arg in reversed(list(enumerate(step_args[:-1])))
+                if arg == '-output'
+            ),
+            None,
+        )
 
     def _simulate_progress(self, cluster_id, now=None):
         """Simulate progress on the given cluster. This is automatically
@@ -1561,7 +1567,7 @@ class MockEMRClient(object):
             cluster['Status']['State'] = 'BOOTSTRAPPING'
 
             # master now has a hostname
-            cluster['MasterPublicDnsName'] = 'master.%s.mock' % cluster['Id']
+            cluster['MasterPublicDnsName'] = f"master.{cluster['Id']}.mock"
 
             # instances are now provisioned
             if cluster['InstanceCollectionType'] == 'INSTANCE_FLEET':
@@ -1718,7 +1724,7 @@ class MockEMRClient(object):
 def _strip_hidden(d):
     """Return a (shallow) copy of the given dict, excluding fields starting
     with underscore."""
-    return dict((k, v) for k, v in d.items() if not k.startswith('_'))
+    return {k: v for k, v in d.items() if not k.startswith('_')}
 
 
 def _normalized_configurations(configurations):

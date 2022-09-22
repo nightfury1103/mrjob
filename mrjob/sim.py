@@ -92,8 +92,7 @@ class SimMRJobRunner(MRJobRunner):
         # however, the job class can still set it; might want to handle
         # this in the job itself
         for ignored_opt in self._IGNORED_HADOOP_OPTS:
-            value = self._opts.get(ignored_opt)
-            if value:  # ignore [], the default value of libjars
+            if value := self._opts.get(ignored_opt):
                 log.warning(
                     'ignoring %s option (requires real Hadoop): %r' %
                     (ignored_opt, value))
@@ -298,13 +297,13 @@ class SimMRJobRunner(MRJobRunner):
         simulating the way Hadoop's Distributed Cache works on nodes."""
         cache_dir = self._dist_cache_dir(step_num)
 
-        log.debug('creating simulated Distributed Cache dir: %s' % cache_dir)
+        log.debug(f'creating simulated Distributed Cache dir: {cache_dir}')
         self.fs.mkdir(cache_dir)
 
         for name, path in self._working_dir_mgr.name_to_path('file').items():
             path = _from_file_uri(path)  # might start with file://
             dest = self._path_in_dist_cache_dir(name, step_num)
-            log.debug('copying %s -> %s' % (path, dest))
+            log.debug(f'copying {path} -> {dest}')
             shutil.copy(path, dest)
             _chmod_u_rx(dest)
 
@@ -313,7 +312,7 @@ class SimMRJobRunner(MRJobRunner):
             path = _from_file_uri(path)  # might start with file://
             dest = self._path_in_dist_cache_dir(name, step_num)
 
-            log.debug('unarchiving %s -> %s' % (path, dest))
+            log.debug(f'unarchiving {path} -> {dest}')
             unarchive(path, dest)
             _chmod_u_rx(dest, recursive=True)
 
@@ -339,8 +338,7 @@ class SimMRJobRunner(MRJobRunner):
             task_type, step_num, task_num, map_split)
 
         def to_env(jobconf):
-            return dict((k.replace('.', '_'), str(v))
-                        for k, v in jobconf.items())
+            return {k.replace('.', '_'): str(v) for k, v in jobconf.items()}
 
         # keep the current environment because we need PATH to find binaries
         # and make PYTHONPATH work
@@ -351,12 +349,13 @@ class SimMRJobRunner(MRJobRunner):
 
     def _simulate_jobconf_for_step(
             self, task_type, step_num, task_num, map_split=None):
-        j = {}
+        j = {
+            'mapreduce.job.id': self._job_key,
+            'mapreduce.task.id': 'task_%s_%s_%04d%d'
+            % (self._job_key, task_type.lower(), step_num, task_num),
+        }
 
-        # TODO: these are really poor imtations of Hadoop IDs. See #1254
-        j['mapreduce.job.id'] = self._job_key
-        j['mapreduce.task.id'] = 'task_%s_%s_%04d%d' % (
-            self._job_key, task_type.lower(), step_num, task_num)
+
         j['mapreduce.task.attempt.id'] = 'attempt_%s_%s_%04d%d_0' % (
             self._job_key, task_type.lower(), step_num, task_num)
 
@@ -375,26 +374,24 @@ class SimMRJobRunner(MRJobRunner):
 
             # mapreduce.job.cache.archives
             # mapreduce.job.cache.files
-            j['mapreduce.job.cache.%ss' % x] = ','.join(
-                '%s#%s' % (path, name) for name, path in named_paths)
+            j[f'mapreduce.job.cache.{x}s'] = ','.join(
+                f'{path}#{name}' for name, path in named_paths
+            )
+
 
             # mapreduce.job.cache.local.archives
             # mapreduce.job.cache.local.files
-            j['mapreduce.job.cache.local.%ss' % x] = ','.join(
-                join(working_dir, name) for name, path in named_paths)
+            j[f'mapreduce.job.cache.local.{x}s'] = ','.join(
+                join(working_dir, name) for name, path in named_paths
+            )
+
 
         if map_split:
             j['mapreduce.map.input.file'] = 'file://' + map_split['file']
             j['mapreduce.map.input.length'] = str(map_split['length'])
             j['mapreduce.map.input.start'] = str(map_split['start'])
 
-        # translate to correct version
-
-        # don't use translate_jobconf_dict(); that's meant to add keys
-        # to user-supplied jobconf
-        hadoop_version = self.get_hadoop_version()
-
-        if hadoop_version:
+        if hadoop_version := self.get_hadoop_version():
             return {translate_jobconf(k, hadoop_version): v
                     for k, v in j.items()}
         else:
@@ -514,7 +511,7 @@ class SimMRJobRunner(MRJobRunner):
         Yield the paths of the reducer input files."""
         path = self._sorted_reducer_input_path(step_num)
 
-        log.debug('splitting reducer input: %s' % path)
+        log.debug(f'splitting reducer input: {path}')
 
         size = os.stat(path)[stat.ST_SIZE]
         split_size = size // (self._num_reducers(step_num) * 2)
@@ -672,8 +669,7 @@ class SimMRJobRunner(MRJobRunner):
         self._sort_input_func()(input_paths, output_path)
 
     def _log_counters(self, step_num):
-        counters = self.counters()[step_num]
-        if counters:
+        if counters := self.counters()[step_num]:
             log.info('\n%s\n' % _format_counters(counters))
 
 
@@ -684,10 +680,8 @@ def _chmod_u_rx(path, recursive=False):
         for dir_name, _, file_names in os.walk(path, followlinks=True):
             for file_name in file_names:
                 _chmod_u_rx(join(dir_name, file_name))
-    else:
-        # only available on Unix, causes rmtree() to fail on Windows; see #1847
-        if hasattr(os, 'chmod') and platform.system() != "Windows":
-            os.chmod(path, stat.S_IRUSR | stat.S_IXUSR)
+    elif hasattr(os, 'chmod') and platform.system() != "Windows":
+        os.chmod(path, stat.S_IRUSR | stat.S_IXUSR)
 
 
 def _group_records_for_split(record_gen, split_size, reducer_key=None):
@@ -753,8 +747,7 @@ def _sort_lines_in_memory(input_paths, output_path, sort_values=False):
     If *sort_values* is true, sort by the entire line; otherwise just sort
     by everything up to the first tab.
     """
-    log.debug('sorting in memory: %s -> %s' %
-              (', '.join(input_paths), output_path))
+    log.debug(f"sorting in memory: {', '.join(input_paths)} -> {output_path}")
     lines = []
 
     for input_path in input_paths:
@@ -796,14 +789,14 @@ def _symlink_or_copy(path, dest):
     If symlinks aren't available, copy path to dest instead.
     """
     if hasattr(os, 'symlink'):
-        log.debug('creating symlink %s <- %s' % (path, dest))
+        log.debug(f'creating symlink {path} <- {dest}')
         try:
             os.symlink(relpath(path, dirname(dest)), dest)
             return
         except OSError as ex:
-            log.debug('  %s' % ex)
+            log.debug(f'  {ex}')
 
-    log.debug('copying %s -> %s' % (dest, path))
+    log.debug(f'copying {dest} -> {path}')
     if isdir(path):
         copytree(path, dest)
     else:

@@ -70,10 +70,7 @@ class HadoopFilesystem(Filesystem):
         self._hadoop_version = None  # cache for get_hadoop_version()
 
     def can_handle_path(self, path):
-        if not (self._hadoop_bin or self._hadoop_bin is None):
-            return False
-
-        return is_uri(path)
+        return is_uri(path) if self._hadoop_bin or self._hadoop_bin is None else False
 
     def get_hadoop_bin(self):
         """Return the hadoop binary, searching for it if need be."""
@@ -110,12 +107,12 @@ class HadoopFilesystem(Filesystem):
                     yield os.path.join(path, 'bin')
 
         for path in unique(yield_paths()):
-            log.info('Looking for hadoop binary in %s...' % (path or '$PATH'))
+            log.info(f"Looking for hadoop binary in {path or '$PATH'}...")
 
             hadoop_bin = which('hadoop', path=path)
 
             if hadoop_bin:
-                log.info('Found hadoop binary: %s' % hadoop_bin)
+                log.info(f'Found hadoop binary: {hadoop_bin}')
                 return [hadoop_bin]
         else:
             log.info("Falling back to 'hadoop'")
@@ -125,16 +122,13 @@ class HadoopFilesystem(Filesystem):
         """Invoke the hadoop executable to determine its version"""
         # mkdir() needs this
         if not self._hadoop_version:
-            stdout = self.invoke_hadoop(['version'], return_stdout=True)
-            if stdout:
+            if stdout := self.invoke_hadoop(['version'], return_stdout=True):
                 first_line = stdout.split(b'\n')[0]
-                m = _HADOOP_VERSION_RE.match(first_line)
-                if m:
-                    self._hadoop_version = to_unicode(m.group('version'))
-                    log.info("Using Hadoop version %s" % self._hadoop_version)
-                else:
+                if not (m := _HADOOP_VERSION_RE.match(first_line)):
                     raise Exception('Unable to determine Hadoop version.')
 
+                self._hadoop_version = to_unicode(m.group('version'))
+                log.info(f"Using Hadoop version {self._hadoop_version}")
         return self._hadoop_version
 
     def invoke_hadoop(self, args, ok_returncodes=None, ok_stderr=None,
@@ -207,7 +201,7 @@ class HadoopFilesystem(Filesystem):
 
     def ls(self, path_glob):
         components = urlparse(path_glob)
-        hdfs_prefix = '%s://%s' % (components.scheme, components.netloc)
+        hdfs_prefix = f'{components.scheme}://{components.netloc}'
 
         version = self.get_hadoop_version()
 
@@ -221,7 +215,7 @@ class HadoopFilesystem(Filesystem):
             stdout = self.invoke_hadoop(args, return_stdout=True,
                                         ok_stderr=[_HADOOP_LS_NO_SUCH_FILE])
         except CalledProcessError:
-            raise IOError("Could not ls %s" % path_glob)
+            raise IOError(f"Could not ls {path_glob}")
 
         for line in BytesIO(stdout):
             line = line.rstrip(b'\r\n')
@@ -295,7 +289,7 @@ class HadoopFilesystem(Filesystem):
         try:
             self.invoke_hadoop(args, ok_stderr=[_HADOOP_FILE_EXISTS_RE])
         except CalledProcessError:
-            raise IOError("Could not mkdir %s" % path)
+            raise IOError(f"Could not mkdir {path}")
 
     def exists(self, path_glob):
         """Does the given path exist?
@@ -311,7 +305,7 @@ class HadoopFilesystem(Filesystem):
 
             return (return_code == 0)
         except CalledProcessError:
-            raise IOError("Could not check path %s" % path_glob)
+            raise IOError(f"Could not check path {path_glob}")
 
     def put(self, src, path):
         # don't inadvertently support cp syntax
@@ -335,10 +329,10 @@ class HadoopFilesystem(Filesystem):
                 args,
                 return_stdout=True, ok_stderr=[_HADOOP_RM_NO_SUCH_FILE])
         except CalledProcessError:
-            raise IOError("Could not rm %s" % path_glob)
+            raise IOError(f"Could not rm {path_glob}")
 
     def touchz(self, path):
         try:
             self.invoke_hadoop(['fs', '-touchz', path])
         except CalledProcessError:
-            raise IOError("Could not touchz %s" % path)
+            raise IOError(f"Could not touchz {path}")

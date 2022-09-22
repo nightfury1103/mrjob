@@ -110,9 +110,9 @@ def fully_qualify_hdfs_path(path):
     if is_uri(path):
         return path
     elif path.startswith('/'):
-        return 'hdfs://' + path
+        return f'hdfs://{path}'
     else:
-        return 'hdfs:///user/%s/%s' % (getpass.getuser(), path)
+        return f'hdfs:///user/{getpass.getuser()}/{path}'
 
 
 class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
@@ -221,8 +221,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
             self._hadoop_streaming_jar = self._find_hadoop_streaming_jar()
 
             if self._hadoop_streaming_jar:
-                log.info('Found Hadoop streaming jar: %s' %
-                         self._hadoop_streaming_jar)
+                log.info(f'Found Hadoop streaming jar: {self._hadoop_streaming_jar}')
             else:
                 log.warning('Hadoop streaming jar not found. Use'
                             ' --hadoop-streaming-jar')
@@ -235,7 +234,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
         """Search for the hadoop streaming jar. See
         :py:meth:`_hadoop_streaming_jar_dirs` for where we search."""
         for path in unique(self._hadoop_streaming_jar_dirs()):
-            log.info('Looking for Hadoop streaming jar in %s...' % path)
+            log.info(f'Looking for Hadoop streaming jar in {path}...')
 
             streaming_jars = []
             for path in self.fs.ls(path):
@@ -258,15 +257,11 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
     def _hadoop_dirs(self):
         """Yield all possible hadoop directories (used for streaming jar
         and logs). May yield duplicates"""
-        for name in ('HADOOP_PREFIX', 'HADOOP_HOME', 'HADOOP_INSTALL',
-                     'HADOOP_MAPRED_HOME'):
-            path = os.environ.get(name)
-            if path:
+        for name in ('HADOOP_PREFIX', 'HADOOP_HOME', 'HADOOP_INSTALL', 'HADOOP_MAPRED_HOME'):
+            if path := os.environ.get(name):
                 yield path
 
-        # guess it from the path of the Hadoop binary
-        hadoop_home = _hadoop_prefix_from_bin(self.get_hadoop_bin()[0])
-        if hadoop_home:
+        if hadoop_home := _hadoop_prefix_from_bin(self.get_hadoop_bin()[0]):
             yield hadoop_home
 
         # try HADOOP_*_HOME
@@ -278,30 +273,24 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
         """Yield all possible places to look for the Hadoop streaming jar.
         May yield duplicates.
         """
-        for hadoop_dir in self._hadoop_dirs():
-            yield hadoop_dir
-
+        yield from self._hadoop_dirs()
         # use hard-coded paths to work out-of-the-box on EMR
-        for path in _EMR_HADOOP_STREAMING_JAR_DIRS:
-            yield path
+        yield from _EMR_HADOOP_STREAMING_JAR_DIRS
 
     def _hadoop_log_dirs(self, output_dir=None):
         """Yield all possible places to look for hadoop logs."""
         # hadoop_log_dirs opt overrides all this
         if self._opts['hadoop_log_dirs']:
-            for path in self._opts['hadoop_log_dirs']:
-                yield path
+            yield from self._opts['hadoop_log_dirs']
             return
 
-        hadoop_log_dir = os.environ.get('HADOOP_LOG_DIR')
-        if hadoop_log_dir:
+        if hadoop_log_dir := os.environ.get('HADOOP_LOG_DIR'):
             yield hadoop_log_dir
 
         yarn = uses_yarn(self.get_hadoop_version())
 
         if yarn:
-            yarn_log_dir = os.environ.get('YARN_LOG_DIR')
-            if yarn_log_dir:
+            if yarn_log_dir := os.environ.get('YARN_LOG_DIR'):
                 yield yarn_log_dir
 
             yield _DEFAULT_YARN_HDFS_LOG_DIR
@@ -315,11 +304,8 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
 
         # hard-coded fallback paths
         if yarn:
-            for path in _FALLBACK_HADOOP_YARN_LOG_DIRS:
-                yield path
-
-        for path in _FALLBACK_HADOOP_LOG_DIRS:
-            yield path
+            yield from _FALLBACK_HADOOP_YARN_LOG_DIRS
+        yield from _FALLBACK_HADOOP_LOG_DIRS
 
     def _run(self):
         self._find_binaries_and_jars()
@@ -353,10 +339,9 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
     def _dump_stdin_to_local_file(self):
         """Dump sys.stdin to a local file, and return the path to it."""
         stdin_path = posixpath.join(self._get_local_tmp_dir(), 'STDIN')
-         # prompt user, so they don't think the process has stalled
         log.info('reading from STDIN')
 
-        log.debug('dumping stdin to local file %s...' % stdin_path)
+        log.debug(f'dumping stdin to local file {stdin_path}...')
         stdin_file = open(stdin_path, 'wb')
         for line in self._stdin:
             stdin_file.write(line)
@@ -373,7 +358,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
             # for the Hadoop streaming jar
             log.info('Running step %d of %d...' %
                      (step_num + 1, self._num_steps()))
-            log.debug('> %s' % cmd_line(step_args))
+            log.debug(f'> {cmd_line(step_args)}')
             log.debug('  with environment: %r' % sorted(env.items()))
 
             log_interpretation = {}
@@ -396,8 +381,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
             self._log_counters(log_interpretation, step_num)
 
             if returncode:
-                error = self._pick_error(log_interpretation, step_type)
-                if error:
+                if error := self._pick_error(log_interpretation, step_type):
                     _log_probable_cause_of_failure(log, error)
 
                 # use CalledProcessError's well-known message format
@@ -474,12 +458,11 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
             raise ValueError('Bad step type: %r' % (step['type'],))
 
     def _args_for_streaming_step(self, step_num):
-        hadoop_streaming_jar = self.get_hadoop_streaming_jar()
-        if not hadoop_streaming_jar:
+        if hadoop_streaming_jar := self.get_hadoop_streaming_jar():
+            return (self.get_hadoop_bin() + ['jar', hadoop_streaming_jar] +
+                    self._hadoop_streaming_jar_args(step_num))
+        else:
             raise Exception('no Hadoop streaming jar')
-
-        return (self.get_hadoop_bin() + ['jar', hadoop_streaming_jar] +
-                self._hadoop_streaming_jar_args(step_num))
 
     def _args_for_jar_step(self, step_num):
         step = self._get_step(step_num)
@@ -492,11 +475,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
         #
         # This might look less like duplicated code if we ever
         # implement #780 (fetching jars from URIs)
-        if step['jar'].startswith('file:///'):
-            jar = step['jar'][7:]  # keep leading slash
-        else:
-            jar = step['jar']
-
+        jar = step['jar'][7:] if step['jar'].startswith('file:///') else step['jar']
         args.extend(['jar', jar])
 
         if step.get('main_class'):
@@ -515,7 +494,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
 
         # when running spark-submit, set its environment directly. See #1464
         if _is_spark_step_type(step['type']):
-            env.update(self._spark_cmdenv(step_num))
+            env |= self._spark_cmdenv(step_num)
 
         return env
 
@@ -524,8 +503,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
 
     def _cleanup_hadoop_tmp(self):
         if self._hadoop_tmp_dir:
-            log.info('Removing HDFS temp directory %s...' %
-                     self._hadoop_tmp_dir)
+            log.info(f'Removing HDFS temp directory {self._hadoop_tmp_dir}...')
             try:
                 self.fs.rm(self._hadoop_tmp_dir)
             except Exception as e:
@@ -547,7 +525,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
 
         for log_dir in unique(self._hadoop_log_dirs(output_dir=output_dir)):
             if _logs_exist(self.fs, log_dir):
-                log.info('Looking for history log in %s...' % log_dir)
+                log.info(f'Looking for history log in {log_dir}...')
                 # logs aren't always in a subdir named history/
                 yield [log_dir]
 
@@ -566,7 +544,7 @@ class HadoopJobRunner(MRJobBinRunner, LogInterpretationMixin):
                 path = self.fs.join(log_dir, 'userlogs')
 
             if _logs_exist(self.fs, path):
-                log.info('Looking for task syslogs in %s...' % path)
+                log.info(f'Looking for task syslogs in {path}...')
                 yield [path]
 
     def counters(self):
@@ -596,10 +574,7 @@ def _hadoop_prefix_from_bin(hadoop_bin):
         posixpath.join(posixpath.realpath(posixpath.dirname(hadoop_bin)), '..')
     )
 
-    if hadoop_home in _BAD_HADOOP_HOMES:
-        return None
-
-    return hadoop_home
+    return None if hadoop_home in _BAD_HADOOP_HOMES else hadoop_home
 
 
 def _log_record_from_hadoop(record):

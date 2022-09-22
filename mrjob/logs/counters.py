@@ -36,12 +36,10 @@ def _format_counters(counters, indent='\t', desc='Counters'):
 def _pick_counters(log_interpretation):
     """Pick counters from a dictionary possibly containing
     step and history interpretations."""
-    for log_type in 'step', 'history':
-        counters = log_interpretation.get(log_type, {}).get('counters')
-        if counters:
+    for log_type in ('step', 'history'):
+        if counters := log_interpretation.get(log_type, {}).get('counters'):
             return counters
-    else:
-        return {}
+    return {}
 
 
 def _sum_counters(*counters_list):

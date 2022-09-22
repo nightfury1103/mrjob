@@ -449,8 +449,9 @@ def _get_step(options, parser, cl_args):
                                script=script_or_jar,
                                spark_args=spark_args)
     else:
-        raise ValueError('%s appears not to be a JAR or Python script' %
-                         options.script_or_jar)
+        raise ValueError(
+            f'{options.script_or_jar} appears not to be a JAR or Python script'
+        )
 
 
 def _get_spark_args(parser, cl_args):
@@ -477,7 +478,7 @@ def _add_spark_submit_arg(parser, opt_name):
 
         for opt_strings, opt_kwargs in _RUNNER_OPTS[opt_name]['switches']:
             if opt_alias in opt_strings:
-                kwargs.update(opt_kwargs)
+                kwargs |= opt_kwargs
 
     kwargs['help'] = _SPARK_SUBMIT_ARG_HELP[opt_name]
     kwargs.update(_SPARK_SUBMIT_ARG_KWARGS.get(opt_name) or {})
@@ -546,7 +547,9 @@ def _print_help_for_runner(runner_class, include_deprecated=False):
     help_parser = ArgumentParser(usage=SUPPRESS, add_help=False)
 
     arg_group = help_parser.add_argument_group(
-        'optional arguments for %s runner' % runner_class.alias)
+        f'optional arguments for {runner_class.alias} runner'
+    )
+
 
     # don't include hard-coded opts or opts in basic help
     opt_names = runner_class.OPT_NAMES - set(_HARD_CODED_OPTS)
@@ -556,9 +559,9 @@ def _print_help_for_runner(runner_class, include_deprecated=False):
 
     # simplify description of aliases of switches in basic help
     customize_switches = {
-        v: dict(help='Alias for %s' % k)
-        for k, v in _SWITCH_ALIASES.items()
+        v: dict(help=f'Alias for {k}') for k, v in _SWITCH_ALIASES.items()
     }
+
 
     _add_runner_args(arg_group, opt_names,
                      include_deprecated=include_deprecated,

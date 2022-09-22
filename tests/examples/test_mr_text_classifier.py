@@ -28,14 +28,13 @@ from tests.py2 import patch
 class ParseDocFileNameTestCase(BasicTestCase):
 
     def test_empty(self):
-        self.assertEqual(
-            parse_doc_filename(''),
-            dict(id='', cats=dict()))
+        self.assertEqual(parse_doc_filename(''), dict(id='', cats={}))
 
     def test_no_cats(self):
         self.assertEqual(
             parse_doc_filename('uncategorized.txt'),
-            dict(id='uncategorized', cats=dict()))
+            dict(id='uncategorized', cats={}),
+        )
 
     def test_with_cats(self):
         self.assertEqual(
@@ -77,7 +76,9 @@ class MRTextClassifierTestCase(BasicTestCase):
                 # include doc ID to make debugging easier
                 self.assertEqual(
                     (doc['id'], bool(doc['cats'].get(cat))),
-                    (doc['id'], bool(doc['cat_to_score'][cat] > 0)))
+                    (doc['id'], doc['cat_to_score'][cat] > 0),
+                )
+
 
         # the empty doc should only be something that appears with no input
         self.assertNotIn(('doc', ''), output)

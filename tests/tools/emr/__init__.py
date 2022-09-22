@@ -41,9 +41,9 @@ class ToolTestCase(MockBoto3TestCase):
 
     def make_cluster(self, **kwargs):
         self.add_mock_s3_data({'walrus': {}})
-        kwargs.update(dict(
-            conf_paths=[],
-            cloud_tmp_dir='s3://walrus/',
-            cloud_fs_sync_secs=0))
+        kwargs |= dict(
+            conf_paths=[], cloud_tmp_dir='s3://walrus/', cloud_fs_sync_secs=0
+        )
+
         with EMRJobRunner(**kwargs) as runner:
             return runner.make_persistent_cluster()

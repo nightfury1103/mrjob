@@ -62,16 +62,16 @@ class ClusterTerminationTestCase(MockBoto3TestCase):
         # Build a step object easily
         # also make it respond to .args()
         def step(jar='/home/hadoop/contrib/streaming/hadoop-streaming.jar',
-                 args=self._DEFAULT_STEP_ARGS,
-                 state='COMPLETED',
-                 created=None,
-                 started=None,
-                 ended=None,
-                 name='Streaming Step',
-                 action_on_failure='TERMINATE_CLUSTER',
-                 **kwargs):
+                     args=self._DEFAULT_STEP_ARGS,
+                     state='COMPLETED',
+                     created=None,
+                     started=None,
+                     ended=None,
+                     name='Streaming Step',
+                     action_on_failure='TERMINATE_CLUSTER',
+                     **kwargs):
 
-            timeline = dict()
+            timeline = {}
             if created:
                 timeline['CreationDateTime'] = created
             if started:

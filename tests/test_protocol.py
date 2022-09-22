@@ -58,10 +58,11 @@ class Point(object):
                                   self.x, self.y)
 
     def __eq__(self, other):
-        if not isinstance(other, Point):
-            return False
-
-        return (self.x, self.y) == (other.x, other.y)
+        return (
+            (self.x, self.y) == (other.x, other.y)
+            if isinstance(other, Point)
+            else False
+        )
 
     def __ne__(self, other):
         return not self.__eq__(other)
@@ -82,8 +83,9 @@ JSON_KEYS_AND_VALUES = [
 REPR_KEYS_AND_VALUES = JSON_KEYS_AND_VALUES + [
     ((1, 2), (3, 4)),
     (b'0\xa2', b'\xe9'),
-    (set([1]), set()),
+    ({1}, set()),
 ]
+
 
 # keys and values that pickle protocols should encode/decode properly
 PICKLE_KEYS_AND_VALUES = REPR_KEYS_AND_VALUES + [
@@ -177,7 +179,7 @@ class StandardJSONProtocolTestCase(ProtocolTestCase):
         self.assertCantEncode(self.PROTOCOL, {(1, 2): 3}, None)
 
         # sets don't exist in JSON
-        self.assertCantEncode(self.PROTOCOL, set([1]), set())
+        self.assertCantEncode(self.PROTOCOL, {1}, set())
 
         # Point class has no representation in JSON
         self.assertCantEncode(self.PROTOCOL, Point(2, 3), Point(1, 4))
@@ -203,7 +205,7 @@ class RapidJSONProtocolTestCase(StandardJSONProtocolTestCase):
         self.assertCantEncode(self.PROTOCOL, {(1, 2): 3}, None)
 
         # sets don't exist in JSON
-        self.assertCantEncode(self.PROTOCOL, set([1]), set())
+        self.assertCantEncode(self.PROTOCOL, {1}, set())
 
         # Point class has no representation in JSON
         self.assertCantEncode(self.PROTOCOL, Point(2, 3), Point(1, 4))

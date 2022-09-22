@@ -61,7 +61,7 @@ def parse_s3_uri(uri):
     if (components.scheme not in ('s3', 's3n', 's3a') or
         '/' not in components.path):  # noqa
 
-        raise ValueError('Invalid S3 URI: %s' % uri)
+        raise ValueError(f'Invalid S3 URI: {uri}')
 
     return components.netloc, components.path[1:]
 
@@ -136,8 +136,7 @@ def parse_mr_job_stderr(stderr, counters=None):
     other = []
 
     for line in stderr:
-        m = _COUNTER_RE.match(line.rstrip(b'\r\n'))
-        if m:
+        if m := _COUNTER_RE.match(line.rstrip(b'\r\n')):
             group, counter, amount_str = m.groups()
 
             # don't leave these as bytes on Python 3
@@ -149,8 +148,7 @@ def parse_mr_job_stderr(stderr, counters=None):
             counters[group][counter] += int(amount_str)
             continue
 
-        m = _STATUS_RE.match(line.rstrip(b'\r\n'))
-        if m:
+        if m := _STATUS_RE.match(line.rstrip(b'\r\n')):
             # don't leave as bytes on Python 3
             statuses.append(to_unicode(m.group(1)))
             continue
@@ -201,8 +199,7 @@ def _parse_progress_from_resource_manager(html_bytes):
     """
     # this is for EMR and assumes only one running job
     for line in html_bytes.splitlines():
-        m = _RESOURCE_MANAGER_JS_RE.match(line)
-        if m:
+        if m := _RESOURCE_MANAGER_JS_RE.match(line):
             return float(m.group('percent'))
 
     return None

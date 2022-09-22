@@ -90,11 +90,11 @@ def main(args=None):
         'Clusters', emr_client, 'list_clusters',
         ClusterStates=['STARTING', 'BOOTSTRAPPING', 'RUNNING'])
 
-    if not options.exclude:
-        filtered_cluster_summaries = cluster_summaries
-    else:
-        filtered_cluster_summaries = _filter_clusters(
-            cluster_summaries, emr_client, options.exclude)
+    filtered_cluster_summaries = (
+        _filter_clusters(cluster_summaries, emr_client, options.exclude)
+        if options.exclude
+        else cluster_summaries
+    )
 
     job_info = _find_long_running_jobs(
         emr_client, filtered_cluster_summaries, min_time, now=now)

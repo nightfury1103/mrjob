@@ -189,14 +189,9 @@ def _maybe_terminate_clusters(dry_run=False,
             num_idle += 1
 
         log.debug(
-            'cluster %s %s for %s, %s (%s) - %s' %
-            (cluster_id,
-             'pending' if is_pending else 'idle',
-             strip_microseconds(time_idle),
-             ('unpooled' if pool is None else 'in %s pool' % pool),
-             cluster_summary['Name'],
-             'protected' if cluster['TerminationProtected'] else 'unprotected',
-             ))
+            f"cluster {cluster_id} {'pending' if is_pending else 'idle'} for {strip_microseconds(time_idle)}, {'unpooled' if pool is None else f'in {pool} pool'} ({cluster_summary['Name']}) - {'protected' if cluster['TerminationProtected'] else 'unprotected'}"
+        )
+
 
         # filter out clusters that don't meet our criteria
         if (max_mins_idle is not None and
@@ -283,14 +278,12 @@ def _time_last_active(cluster_summary, steps):
     timestamps = []
 
     for key in 'CreationDateTime', 'ReadyDateTime':
-        value = cluster_summary['Status']['Timeline'].get(key)
-        if value:
+        if value := cluster_summary['Status']['Timeline'].get(key):
             timestamps.append(value)
 
     for step in steps:
         for key in 'CreationDateTime', 'StartDateTime', 'EndDateTime':
-            value = step['Status']['Timeline'].get(key)
-            if value:
+            if value := step['Status']['Timeline'].get(key):
                 timestamps.append(value)
 
     return max(timestamps)

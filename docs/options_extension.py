@@ -99,27 +99,31 @@ def resolve_pending_xref(app, fromdocname, node):
     # refs at that point, even though it knows where all the refs should point
     # to.
 
-    if 'refdomain' in node and node['refdomain']:
-        domain = None
-        contnode = node[0].deepcopy()
+    if 'refdomain' not in node or not node['refdomain']:
+        return node.children
+    domain = None
+    contnode = node[0].deepcopy()
 
-        builder = app.builder
-        env = app.builder.env
-        try:
-            domain = env.domains[node['refdomain']]
-        except KeyError:
-            raise MRJobOptError('could not resolve domain for %s' % node)
-        newnode = domain.resolve_xref(
-            app, fromdocname, builder, node['reftype'], node['reftarget'],
-            node, contnode)
-        if newnode:
-            return [newnode]
-        else:
-            # this reference can't be resolved, but that's probably because
-            # it's an 'optional link' like an :envvar: with no definition in
-            # the docs.
-            return node.children
+    builder = app.builder
+    env = app.builder.env
+    try:
+        domain = env.domains[node['refdomain']]
+    except KeyError:
+        raise MRJobOptError(f'could not resolve domain for {node}')
+    if newnode := domain.resolve_xref(
+        app,
+        fromdocname,
+        builder,
+        node['reftype'],
+        node['reftarget'],
+        node,
+        contnode,
+    ):
+        return [newnode]
     else:
+        # this reference can't be resolved, but that's probably because
+        # it's an 'optional link' like an :envvar: with no definition in
+        # the docs.
         return node.children
 
 
@@ -210,7 +214,7 @@ class OptionDirective(Directive):
         env = self.state.document.settings.env
 
         # generate the linkback node for this option
-        targetid = "option-%s" % self.options['config']
+        targetid = f"option-{self.options['config']}"
         targetnode = nodes.target('', '', ids=[targetid])
 
         # Each option will be outputted as a single-item definition list
@@ -260,7 +264,7 @@ class OptionDirective(Directive):
             textnodes, messages = self.state.inline_text(
                 self.options['default'], self.lineno)
             default_nodes = textnodes
-            default_par.extend(textnodes)
+            default_par.extend(default_nodes)
             defn.append(default_par)
 
         # parse the description like a nested block (see
@@ -413,7 +417,7 @@ def replace_optionlinks_with_links(app, doctree, fromdocname):
         try:
             option_info = env.optionlist_indexed_options[k]
         except KeyError:
-            raise MRJobOptError("Unknown mrjob-opt %s" % k)
+            raise MRJobOptError(f"Unknown mrjob-opt {k}")
 
         refnode = nodes.reference('', '')
         innernode = nodes.emphasis(node.text, node.text)

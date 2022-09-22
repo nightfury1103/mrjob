@@ -69,11 +69,7 @@ class MockGoogleStorageBucket(object):
                 '/b?project=%s: Sorry, that name is not available.'
                 ' Please try a different one.')
 
-        if location:
-            location = location.upper()
-        else:
-            location = 'US'  # default bucket location
-
+        location = location.upper() if location else 'US'
         self.client.mock_gcs_fs[self.name] = dict(
             blobs={}, lifecycle_rules=[], location=location)
 
@@ -124,11 +120,7 @@ class MockGoogleStorageBucket(object):
     def location(self):
         fs = self.client.mock_gcs_fs
 
-        if self.name in fs:
-            return fs[self.name]['location']
-        else:
-            # google-cloud-sdk silently ignores missing buckets
-            return None
+        return fs[self.name]['location'] if self.name in fs else None
 
 
 class MockGoogleStorageBlob(object):
@@ -144,7 +136,7 @@ class MockGoogleStorageBlob(object):
     def delete(self):
         if (self.bucket.name not in self._fs or
                 self.name not in self._fs[self.bucket.name]['blobs']):
-            raise NotFound('DELETE %s: Not Found' % self._blob_uri())
+            raise NotFound(f'DELETE {self._blob_uri()}: Not Found')
 
         del self._fs[self.bucket.name]['blobs'][self.name]
 
@@ -152,13 +144,14 @@ class MockGoogleStorageBlob(object):
         try:
             data = self._fs[self.bucket.name]['blobs'][self.name]['data']
         except KeyError:
-            raise NotFound('GET %s?alt=media: Not Found' % self._blob_uri())
+            raise NotFound(f'GET {self._blob_uri()}?alt=media: Not Found')
 
         if start is not None and start >= len(data):
             # it doesn't care if *end* exceeds the range
             raise RequestRangeNotSatisfiable(
-                'GET %s?alt=media: Request range not satisfiable' %
-                self._blob_uri())
+                f'GET {self._blob_uri()}?alt=media: Request range not satisfiable'
+            )
+
 
         return data[start:end]
 

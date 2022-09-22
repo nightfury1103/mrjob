@@ -130,26 +130,25 @@ class StepFailedException(Exception):
         *step_num*."""
         if self.step_desc:
             step_desc = self.step_desc
+        elif self.step_num is None:
+            step_desc = 'Step'
+
         else:
-            if self.step_num is not None:
                 # 1-index step numbers
-                if self.last_step_num is not None:
-                    step_name = 'Steps %d-%d' % (
-                        self.step_num + 1, self.last_step_num + 1)
-                else:
-                    step_name = 'Step %d' % (self.step_num + 1)
+            step_name = (
+                'Steps %d-%d' % (self.step_num + 1, self.last_step_num + 1)
+                if self.last_step_num is not None
+                else 'Step %d' % (self.step_num + 1)
+            )
 
-                if self.num_steps:
-                    step_desc = '%s of %d' % (step_name, self.num_steps)
-                else:
-                    step_desc = step_name
+            if self.num_steps:
+                step_desc = '%s of %d' % (step_name, self.num_steps)
             else:
-                step_desc = 'Step'
-
+                step_desc = step_name
         if self.reason:
-            return '%s failed: %s' % (step_desc, self.reason)
+            return f'{step_desc} failed: {self.reason}'
         else:
-            return '%s failed' % step_desc
+            return f'{step_desc} failed'
 
     def __repr__(self):
         return '%s(%s)' % (
@@ -227,7 +226,7 @@ class MRStep(object):
             value for name, value in kwargs.items()
             if name in _REDUCER_FUNCS)
 
-        steps = dict((f, None) for f in _JOB_STEP_PARAMS)
+        steps = {f: None for f in _JOB_STEP_PARAMS}
 
         steps.update(kwargs)
 
@@ -246,11 +245,9 @@ class MRStep(object):
         self._steps = steps
 
     def __repr__(self):
-        not_none = dict((k, v) for k, v in self._steps.items()
-                        if v is not None)
-        return '%s(%s)' % (
-            self.__class__.__name__,
-            ', '.join('%s=%r' % (k, v) for k, v in not_none.items()))
+        not_none = {k: v for k, v in self._steps.items() if v is not None}
+
+        return f"{self.__class__.__name__}({', '.join('%s=%r' % (k, v) for k, v in not_none.items())})"
 
     def __eq__(self, other):
         return (isinstance(other, MRStep) and self._steps == other._steps)
@@ -279,8 +276,7 @@ class MRStep(object):
             if not isinstance(cmd, string_types):
                 cmd = cmd_line(cmd)
             if (pre_filter_key and self._steps[pre_filter_key]):
-                raise ValueError('Cannot specify both %s and %s' % (
-                    cmd_key, pre_filter_key))
+                raise ValueError(f'Cannot specify both {cmd_key} and {pre_filter_key}')
             return {'type': 'command', 'command': cmd}
         else:
             substep = {'type': 'script'}
@@ -362,10 +358,11 @@ class _Step(object):
         """Set all attributes to the corresponding value in *kwargs*, or the
         default value. Raise :py:class:`TypeError` for unknown arguments or
         values with the wrong type."""
-        bad_kwargs = sorted(set(kwargs) - set(self._STEP_ATTRS))
-        if bad_kwargs:
-            raise TypeError('%s() got unexpected keyword arguments: %s' % (
-                self.__class__.__name__, ', '.join(bad_kwargs)))
+        if bad_kwargs := sorted(set(kwargs) - set(self._STEP_ATTRS)):
+            raise TypeError(
+                f"{self.__class__.__name__}() got unexpected keyword arguments: {', '.join(bad_kwargs)}"
+            )
+
 
         for k in self._STEP_ATTRS:
             v = kwargs.get(k)
@@ -384,15 +381,19 @@ class _Step(object):
             setattr(self, k, v)
 
     def __repr__(self):
-        kwargs = dict(
-            (k, getattr(self, k))
-            for k in self._STEP_ATTR_TYPES if hasattr(self, k))
+        kwargs = {
+            k: getattr(self, k) for k in self._STEP_ATTR_TYPES if hasattr(self, k)
+        }
+
 
         return '%s(%s)' % (
-            self.__class__.__name__, ', '.join(
-                '%s=%s' % (k, v)
+            self.__class__.__name__,
+            ', '.join(
+                f'{k}={v}'
                 for k, v in sorted(kwargs.items())
-                if v != self._default(k)))
+                if v != self._default(k)
+            ),
+        )
 
     def __eq__(self, other):
         return (isinstance(other, self.__class__) and
@@ -400,19 +401,17 @@ class _Step(object):
                     for key in set(self._STEP_ATTRS)))
 
     def _default(self, k):
-        if k in self._STEP_ATTR_DEFAULTS:
-            return self._STEP_ATTR_DEFAULTS[k]()
-        else:
-            return None
+        return self._STEP_ATTR_DEFAULTS[k]() if k in self._STEP_ATTR_DEFAULTS else None
 
     def description(self, step_num=0):
         """Return a dictionary representation of this step. See
         :ref:`steps-format` for examples."""
-        result = dict(
-            (k, getattr(self, k))
+        result = {
+            k: getattr(self, k)
             for k in self._STEP_ATTRS
             if k not in self._HIDDEN_ATTRS
-        )
+        }
+
         result['type'] = self._STEP_TYPE
 
         return result

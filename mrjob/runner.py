@@ -223,14 +223,7 @@ class MRJobRunner(object):
         # access/make this using self._get_local_tmp_dir()
         self._local_tmp_dir = None
 
-        if self._emulate_archives_on_spark():
-            # keep Spark from auto-uncompressing tarballs
-            archive_file_suffix = '.file'
-        else:
-            # otherwise, leave as-is, so that --archive will
-            # work properly
-            archive_file_suffix = ''
-
+        archive_file_suffix = '.file' if self._emulate_archives_on_spark() else ''
         self._working_dir_mgr = WorkingDirManager(
             archive_file_suffix=archive_file_suffix)
 
@@ -288,10 +281,7 @@ class MRJobRunner(object):
 
         # Where to read input from (log files, etc.)
         self._input_paths = input_paths or ['-']  # by default read from stdin
-        if PY2:
-            self._stdin = stdin or sys.stdin
-        else:
-            self._stdin = stdin or sys.stdin.buffer
+        self._stdin = stdin or sys.stdin if PY2 else stdin or sys.stdin.buffer
         self._stdin_path = None  # temp file containing dump from stdin
 
         # where to keep the input manifest
@@ -387,9 +377,7 @@ class MRJobRunner(object):
             source = 'defaults'  # defaults shouldn't trigger warnings
 
         if not isinstance(opts, dict):
-            raise TypeError(
-                'options for %s (from %s) must be a dict' %
-                (self.alias, source))
+            raise TypeError(f'options for {self.alias} (from {source}) must be a dict')
 
         deprecated_aliases = _deprecated_aliases(self.OPT_NAMES)
 
@@ -423,7 +411,7 @@ class MRJobRunner(object):
 
                 results[k] = fixed_v
             elif v:
-                log.warning('Unexpected option %s (from %s)' % (k, source))
+                log.warning(f'Unexpected option {k} (from {source})')
 
         return results
 
@@ -453,9 +441,9 @@ class MRJobRunner(object):
         for cleanup_type in opt_value:
             if cleanup_type not in CLEANUP_CHOICES:
                 raise ValueError(
-                    '%s must be one of %s, not %s (from %s)' % (
-                        opt_key, ', '.join(CLEANUP_CHOICES), opt_value,
-                        source))
+                    f"{opt_key} must be one of {', '.join(CLEANUP_CHOICES)}, not {opt_value} (from {source})"
+                )
+
 
         return opt_value
 
@@ -507,7 +495,7 @@ class MRJobRunner(object):
 
         # only print this message if the last step uses our output dir
         if 'args' not in last_step or OUTPUT in last_step['args']:
-            log.info('job output is in %s' % self._output_dir)
+            log.info(f'job output is in {self._output_dir}')
 
     def cat_output(self):
         """Stream the job's output, as a stream of ``bytes``. If there are
@@ -531,7 +519,7 @@ class MRJobRunner(object):
                 'WARNING! Trying to stream output from a closed runner, output'
                 ' will probably be empty.')
 
-        log.info('Streaming final output from %s...' % output_dir)
+        log.info(f'Streaming final output from {output_dir}...')
 
         def split_path(path):
             while True:
@@ -550,16 +538,14 @@ class MRJobRunner(object):
                 subpath = filename[len(output_dir):]
                 # Hadoop ignores files and dirs inside the output dir
                 # whose names start with '_' or '.'. See #1337.
-                if not (any(name[0] in '_.'
-                            for name in split_path(subpath))):
+                if all(name[0] not in '_.' for name in split_path(subpath)):
                     yield filename
 
         for i, filename in enumerate(ls_output()):
             if i > 0:
                 yield b''  # EOF of previous file
 
-            for chunk in self.fs._cat_file(filename):
-                yield chunk
+            yield from self.fs._cat_file(filename)
 
     def _cleanup_mode(self, mode=None):
         """Actual cleanup action to take based on various options"""
@@ -593,7 +579,7 @@ class MRJobRunner(object):
         This won't remove output_dir if it's outside of our tmp dir.
         """
         if self._local_tmp_dir:
-            log.info('Removing temp directory %s...' % self._local_tmp_dir)
+            log.info(f'Removing temp directory {self._local_tmp_dir}...')
             try:
                 rmtree(self._local_tmp_dir)
             except OSError as e:
@@ -692,10 +678,7 @@ class MRJobRunner(object):
     def get_output_dir(self):
         """Find the directory containing the job output. If the job hasn't
         run yet, returns None"""
-        if self._script_path and not self._ran_job:
-            return None
-
-        return self._output_dir
+        return None if self._script_path and not self._ran_job else self._output_dir
 
     ### other methods you need to implement in your subclass ###
 
@@ -729,7 +712,7 @@ class MRJobRunner(object):
                        tempfile.gettempdir())
 
             path = os.path.join(tmp_dir, self._job_key)
-            log.info('Creating temp directory %s' % path)
+            log.info(f'Creating temp directory {path}')
             if os.path.isdir(path):
                 rmtree(path)
             os.makedirs(path)
@@ -768,11 +751,7 @@ class MRJobRunner(object):
     def _owner(self):
         """Return *owner* opt (which defaults to :py:func:`getpass.getuser`),
         or ``'no_user'`` if not set."""
-        if self._opts['owner']:
-            # owner opt defaults to getpass.getuser()
-            return self._opts['owner']
-        else:
-            return 'no_user'
+        return self._opts['owner'] or 'no_user'
 
     def _get_steps(self):
         """Returns ``self._steps``.
@@ -788,8 +767,7 @@ class MRJobRunner(object):
         if not self._STEP_TYPES:
             # use __class__.__name__ because only MRJobRunner would
             # trigger this
-            raise NotImplementedError(
-                '%s cannot run steps!' % self.__class__.__name__)
+            raise NotImplementedError(f'{self.__class__.__name__} cannot run steps!')
 
         for step_num, step in enumerate(steps):
             self._check_step(step, step_num)
@@ -915,10 +893,7 @@ class MRJobRunner(object):
         return self._spark_master() != 'yarn'
 
     def _args_for_task(self, step_num, mrc):
-        return [
-            '--step-num=%d' % step_num,
-            '--%s' % mrc,
-        ] + self._mr_job_extra_args()
+        return (['--step-num=%d' % step_num, f'--{mrc}'] + self._mr_job_extra_args())
 
     def _mr_job_extra_args(self, local=False):
         """Return arguments to add to every invocation of MRJob.
@@ -995,14 +970,16 @@ class MRJobRunner(object):
         if dir_path not in self._dir_to_archive_path:
             # we can check local paths now
             if not (is_uri(dir_path) or os.path.isdir(dir_path)):
-                raise OSError('%s is not a directory!' % dir_path)
+                raise OSError(f'{dir_path} is not a directory!')
 
             name = name_uniquely(
                 dir_path, names_taken=self._dir_archive_names_taken)
             self._dir_archive_names_taken.add(name)
 
             self._dir_to_archive_path[dir_path] = os.path.join(
-                self._get_local_tmp_dir(), 'archives', name + '.tar.gz')
+                self._get_local_tmp_dir(), 'archives', f'{name}.tar.gz'
+            )
+
 
         return self._dir_to_archive_path[dir_path]
 
@@ -1028,24 +1005,22 @@ class MRJobRunner(object):
         tmp_download_path = os.path.join(
             self._get_local_tmp_dir(), 'tmp-download')
 
-        log.info('Archiving %s -> %s' % (dir_path, tar_gz_path))
+        log.info(f'Archiving {dir_path} -> {tar_gz_path}')
 
         with tarfile.open(tar_gz_path, mode='w:gz') as tar_gz:
             for path in self.fs.ls(dir_path):
                 # fs.ls() only lists files
                 if path == dir_path:
-                    raise OSError('%s is a file, not a directory!' % dir_path)
+                    raise OSError(f'{dir_path} is a file, not a directory!')
 
                 # TODO: do we need this?
                 if os.path.realpath(path) == os.path.realpath(tar_gz_path):
-                    raise OSError(
-                        'attempted to archive %s into itself!' % tar_gz_path)
+                    raise OSError(f'attempted to archive {tar_gz_path} into itself!')
 
                 if is_uri(path):
                     path_in_tar_gz = path[len(dir_path):].lstrip('/')
 
-                    log.info('  downloading %s -> %s' % (
-                        path, tmp_download_path))
+                    log.info(f'  downloading {path} -> {tmp_download_path}')
                     with open(tmp_download_path, 'wb') as f:
                         for chunk in self.fs.cat(path):
                             f.write(chunk)
@@ -1054,7 +1029,7 @@ class MRJobRunner(object):
                     path_in_tar_gz = path[len(dir_path):].lstrip(os.sep)
                     local_path = path
 
-                log.debug('  adding %s to %s' % (path, tar_gz_path))
+                log.debug(f'  adding {path} to {tar_gz_path}')
                 tar_gz.add(local_path, path_in_tar_gz, recursive=False)
 
         self._dir_archives_created.add(tar_gz_path)
@@ -1072,21 +1047,20 @@ class MRJobRunner(object):
         if self._input_manifest_path:
             return [self._input_manifest_path]
 
-        if '-' in self._input_paths:
-            if self._stdin_path is None:
-                # prompt user, so they don't think the process has stalled
-                log.info('reading from STDIN')
+        if '-' in self._input_paths and self._stdin_path is None:
+            # prompt user, so they don't think the process has stalled
+            log.info('reading from STDIN')
 
-                stdin_path = os.path.join(self._get_local_tmp_dir(), 'STDIN')
-                log.debug('dumping stdin to local file %s' % stdin_path)
-                with open(stdin_path, 'wb') as stdin_file:
-                    for line in self._stdin:
-                        # catch missing newlines (often happens with test data)
-                        if not line.endswith(b'\n'):
-                            line += b'\n'
-                        stdin_file.write(line)
+            stdin_path = os.path.join(self._get_local_tmp_dir(), 'STDIN')
+            log.debug(f'dumping stdin to local file {stdin_path}')
+            with open(stdin_path, 'wb') as stdin_file:
+                for line in self._stdin:
+                    # catch missing newlines (often happens with test data)
+                    if not line.endswith(b'\n'):
+                        line += b'\n'
+                    stdin_file.write(line)
 
-                self._stdin_path = stdin_path
+            self._stdin_path = stdin_path
 
         return [self._stdin_path if p == '-' else p for p in self._input_paths]
 
@@ -1100,19 +1074,15 @@ class MRJobRunner(object):
         log.info('finding input files to add to manifest...')
 
         for path in self._get_input_paths():
-            log.debug('  in %s' % path)
+            log.debug(f'  in {path}')
             if is_uri(path):
                 # URIs might be globs
-                for uri in self.fs.ls(path):
-                    uris.append(uri)
+                uris.extend(iter(self.fs.ls(path)))
+            elif self._upload_mgr:
+                uris.append(self._upload_mgr.uri(path))
             else:
-                # local paths are expected to be single files
-                # (shell would resolve globs)
-                if self._upload_mgr:
-                    uris.append(self._upload_mgr.uri(path))
-                else:
-                    # just make sure job can find files from its working dir
-                    uris.append(os.path.abspath(path))
+                # just make sure job can find files from its working dir
+                uris.append(os.path.abspath(path))
 
         log.info('found %d input files' % len(uris))
 
@@ -1143,8 +1113,7 @@ class MRJobRunner(object):
             return  # no way to check (e.g. non-S3 URIs on EMR)
 
         if not self.fs.exists(path):
-            raise IOError(
-                'Input path %s does not exist!' % (path,))
+            raise IOError(f'Input path {path} does not exist!')
 
     def _add_input_files_for_upload(self):
         """If there is an upload manager, add input files to it."""
@@ -1158,10 +1127,9 @@ class MRJobRunner(object):
         if self._upload_mgr:
             self.fs.mkdir(self._upload_mgr.prefix)
 
-            log.info('Copying other local files to %s' %
-                     self._upload_mgr.prefix)
+            log.info(f'Copying other local files to {self._upload_mgr.prefix}')
             for src_path, uri in self._upload_mgr.path_to_uri().items():
-                log.debug('  %s -> %s' % (src_path, uri))
+                log.debug(f'  {src_path} -> {uri}')
                 self.fs.put(src_path, uri)
 
     def _wd_mirror(self):
@@ -1189,20 +1157,23 @@ class MRJobRunner(object):
         """Return the URI of where to upload *path* so it can appear in the
         working dir as *name*, or ``None`` if it doesn't need to be uploaded.
         """
-        dest_dir = self._wd_mirror()
-        if not dest_dir:
-            return None
+        if dest_dir := self._wd_mirror():
+                # the only reason to re-upload a URI is if it has the wrong name
+                #
+                # similarly, the only point of a local working dir mirror is
+                # to rename things
+            return (
+                None
+                if (is_uri(path) or not is_uri(dest_dir))
+                and (
+                    posixpath.basename(path) == name
+                    or not self._wd_filenames_must_match()
+                )
+                else posixpath.join(dest_dir, name)
+            )
 
-        # the only reason to re-upload a URI is if it has the wrong name
-        #
-        # similarly, the only point of a local working dir mirror is
-        # to rename things
-        if (is_uri(path) or not is_uri(dest_dir)) and (
-                posixpath.basename(path) == name or
-                not self._wd_filenames_must_match()):
+        else:
             return None
-
-        return posixpath.join(dest_dir, name)
 
     def _copy_file_to_wd_mirror(self, path, name):
         """Upload/copy *path* to the appropriate place in the working dir
@@ -1222,19 +1193,19 @@ class MRJobRunner(object):
 
             tmp_path = os.path.join(wd_tmp, name)
 
-            log.debug('  %s <- %s' % (tmp_path, path))
+            log.debug(f'  {tmp_path} <- {path}')
             try:
                 with open(tmp_path, 'wb') as tmp_f:
                     for chunk in self.fs.cat(path):
                         tmp_f.write(chunk)
 
-                log.debug('  %s -> %s' % (tmp_path, dest))
+                log.debug(f'  {tmp_path} -> {dest}')
                 self.fs.put(tmp_path, dest)
             finally:
                 os.remove(tmp_path)
         else:
             # upload it
-            log.debug('  %s -> %s' % (path, dest))
+            log.debug(f'  {path} -> {dest}')
             self.fs.put(path, dest)
 
     def _copy_files_to_wd_mirror(self):
@@ -1249,8 +1220,10 @@ class MRJobRunner(object):
 
         self.fs.mkdir(wd_mirror)
 
-        log.info('%s working dir files to %s...' %
-                 ('uploading' if is_uri(wd_mirror) else 'copying', wd_mirror))
+        log.info(
+            f"{'uploading' if is_uri(wd_mirror) else 'copying'} working dir files to {wd_mirror}..."
+        )
+
 
         for name, path in sorted(
                 self._working_dir_mgr.name_to_path('file').items()):
@@ -1326,10 +1299,7 @@ class MRJobRunner(object):
                                    self._opts['jobconf'],
                                    step.get('jobconf'))
 
-        # if user is using the wrong jobconfs, add in the correct ones
-        # and log a warning
-        hadoop_version = self.get_hadoop_version()
-        if hadoop_version:
+        if hadoop_version := self.get_hadoop_version():
             jobconf = translate_jobconf_dict(jobconf, hadoop_version)
 
         return jobconf
@@ -1356,10 +1326,7 @@ class MRJobRunner(object):
 
     def _sort_values_partitioner(self):
         """Partitioner to use with *sort_values* keyword to the constructor."""
-        if self._sort_values:
-            return _SORT_VALUES_PARTITIONER
-        else:
-            return None
+        return _SORT_VALUES_PARTITIONER if self._sort_values else None
 
     def _upload_args(self):
         # just upload every file and archive in the working dir manager
@@ -1382,17 +1349,10 @@ class MRJobRunner(object):
 
         # --files ...
         if file_hash_paths:
-            args.append(files_opt_str)
-            args.append(','.join(file_hash_paths))
-
+            args.extend((files_opt_str, ','.join(file_hash_paths)))
         if not emulate_archives:
-            archive_hash_paths = list(self._archive_arg_hash_paths(archives))
-
-            # --archives ...
-            if archive_hash_paths:
-                args.append(archives_opt_str)
-                args.append(','.join(archive_hash_paths))
-
+            if archive_hash_paths := list(self._archive_arg_hash_paths(archives)):
+                args.extend((archives_opt_str, ','.join(archive_hash_paths)))
         return args
 
     def _file_arg_hash_paths(self, named_paths=None, always_use_hash=True):
@@ -1416,7 +1376,7 @@ class MRJobRunner(object):
             if not always_use_hash and _basename(uri) == name:
                 yield uri
             else:
-                yield '%s#%s' % (uri, name)
+                yield f'{uri}#{name}'
 
     def _file_archive_hash_paths(self, named_paths=None):
         """Helper function for the *upload_args methods. The names of
@@ -1439,9 +1399,7 @@ class MRJobRunner(object):
             archive_file_name = self._working_dir_mgr.name(
                 'archive_file', path)
 
-            uri = self._dest_in_wd_mirror(path, archive_file_name) or path
-
-            yield uri
+            yield self._dest_in_wd_mirror(path, archive_file_name) or path
 
     def _archive_arg_hash_paths(self, named_paths=None):
         """Helper function for the *upload_args methods. The names of all
@@ -1467,7 +1425,7 @@ class MRJobRunner(object):
 
             uri = self._dest_in_wd_mirror(path, archive_file_name) or path
 
-            yield '%s#%s' % (uri, name)
+            yield f'{uri}#{name}'
 
     def _write_script(self, lines, path, description):
         """Write text of a setup script, input manifest, etc. to the given
@@ -1480,9 +1438,9 @@ class MRJobRunner(object):
         :param path: path of file to write to
         :param description: what we're writing to, for debug messages
         """
-        log.debug('Writing %s to %s:' % (description, path))
+        log.debug(f'Writing {description} to {path}:')
         for line in lines:
-            log.debug('  ' + line)
+            log.debug(f'  {line}')
 
         self._write_script_lines(lines, path)
 
@@ -1503,7 +1461,7 @@ def _fix_env(env):
         else:
             return s
 
-    return dict((_to_str(k), _to_str(v)) for k, v in env.items())
+    return {_to_str(k): _to_str(v) for k, v in env.items()}
 
 
 def _blank_out_conflicting_opts(opt_list, opt_names, conflicting_opts=None):
@@ -1559,7 +1517,7 @@ def _runner_class(alias):
         return SparkMRJobRunner
 
     else:
-        raise ValueError('bad runner alias: %s' % alias)
+        raise ValueError(f'bad runner alias: {alias}')
 
 
 def _basename(path_or_uri):

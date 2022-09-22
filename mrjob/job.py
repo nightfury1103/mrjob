@@ -76,10 +76,7 @@ def _im_func(f):
     functions. (Methods work the same way on both versions.)
     """
     # "im_func" is the old Python 2 name for __func__
-    if hasattr(f, '__func__'):
-        return f.__func__
-    else:
-        return f
+    return f.__func__ if hasattr(f, '__func__') else f
 
 
 class MRJob(object):
@@ -199,13 +196,12 @@ class MRJob(object):
 
         for dest, option_string, args in raw_args:
             if dest in self._file_arg_dests:
-                extra_args.append(option_string)
-                extra_args.append(parse_legacy_hash_path('file', args[0]))
+                extra_args.extend((option_string, parse_legacy_hash_path('file', args[0])))
             elif dest in self._passthru_arg_dests:
                 # special case for --hadoop-args=-verbose etc.
                 if (option_string and len(args) == 1 and
                         args[0].startswith('-')):
-                    extra_args.append('%s=%s' % (option_string, args[0]))
+                    extra_args.append(f'{option_string}={args[0]}')
                 else:
                     if option_string:
                         extra_args.append(option_string)
@@ -228,10 +224,11 @@ class MRJob(object):
         )
 
     def _kwargs_from_switches(self, keys):
-        return dict(
-            (key, getattr(self.options, key))
-            for key in keys if hasattr(self.options, key)
-        )
+        return {
+            key: getattr(self.options, key)
+            for key in keys
+            if hasattr(self.options, key)
+        }
 
     def _job_kwargs(self):
         """Keyword arguments to the runner class that can be specified
@@ -514,11 +511,15 @@ class MRJob(object):
                  :py:mod:`mrjob.step`.
         """
         # only include methods that have been redefined
-        kwargs = dict(
-            (func_name, getattr(self, func_name))
+        kwargs = {
+            func_name: getattr(self, func_name)
             for func_name in _JOB_STEP_FUNC_PARAMS + ('spark',)
-            if (_im_func(getattr(self, func_name)) is not
-                _im_func(getattr(MRJob, func_name))))
+            if (
+                _im_func(getattr(self, func_name))
+                is not _im_func(getattr(MRJob, func_name))
+            )
+        }
+
 
         # special case for spark()
         # TODO: support jobconf as well
@@ -532,17 +533,15 @@ class MRJob(object):
 
         # MRStep takes commands as strings, but the user defines them in the
         # class as functions that return strings, so call the functions.
-        updates = {}
-        for k, v in kwargs.items():
-            if k.endswith('_cmd') or k.endswith('_pre_filter'):
-                updates[k] = v()
+        updates = {
+            k: v()
+            for k, v in kwargs.items()
+            if k.endswith('_cmd') or k.endswith('_pre_filter')
+        }
 
-        kwargs.update(updates)
+        kwargs |= updates
 
-        if kwargs:
-            return [MRStep(**kwargs)]
-        else:
-            return []
+        return [MRStep(**kwargs)] if kwargs else []
 
     def increment_counter(self, group, counter, amount=1):
         """Increment a counter in Hadoop streaming by printing to stderr.
@@ -704,11 +703,20 @@ class MRJob(object):
         kwargs = self._runner_kwargs()
 
         # screen out most false-ish args so that it's readable
-        log.debug('making runner: %s(%s, ...)' % (
-            runner_class.__name__,
-            ', '.join('%s=%s' % (k, v)
-                      for k, v in sorted(kwargs.items())
-                      if v not in (None, [], {}))))
+        log.debug(
+            (
+                'making runner: %s(%s, ...)'
+                % (
+                    runner_class.__name__,
+                    ', '.join(
+                        f'{k}={v}'
+                        for k, v in sorted(kwargs.items())
+                        if v not in (None, [], {})
+                    ),
+                )
+            )
+        )
+
 
         return self._runner_class()(**self._runner_kwargs())
 
@@ -812,27 +820,20 @@ class MRJob(object):
 
         mapper = step['mapper']
         mapper_raw = step['mapper_raw']
-        mapper_init = step['mapper_init']
         mapper_final = step['mapper_final']
 
-        if mapper_init:
-            for k, v in mapper_init() or ():
-                yield k, v
-
+        if mapper_init := step['mapper_init']:
+            yield from mapper_init() or ()
         if mapper_raw:
             if len(self.options.args) != 2:
                 raise ValueError('Wrong number of args')
             input_path, input_uri = self.options.args
-            for k, v in mapper_raw(input_path, input_uri) or ():
-                yield k, v
+            yield from mapper_raw(input_path, input_uri) or ()
         else:
             for key, value in pairs:
-                for k, v in mapper(key, value) or ():
-                    yield k, v
-
+                yield from mapper(key, value) or ()
         if mapper_final:
-            for k, v in mapper_final() or ():
-                yield k, v
+            yield from mapper_final() or ()
 
     def combine_pairs(self, pairs, step_num=0):
         """Runs :py:meth:`combiner_init`,
@@ -847,8 +848,7 @@ class MRJob(object):
 
         .. versionadded:: 0.6.7
         """
-        for k, v in self._combine_or_reduce_pairs(pairs, 'combiner', step_num):
-            yield k, v
+        yield from self._combine_or_reduce_pairs(pairs, 'combiner', step_num)
 
     def reduce_pairs(self, pairs, step_num=0):
         """Runs :py:meth:`reducer_init`,
@@ -863,35 +863,29 @@ class MRJob(object):
 
         .. versionadded:: 0.6.7
         """
-        for k, v in self._combine_or_reduce_pairs(pairs, 'reducer', step_num):
-            yield k, v
+        yield from self._combine_or_reduce_pairs(pairs, 'reducer', step_num)
 
     def _combine_or_reduce_pairs(self, pairs, mrc, step_num=0):
         """Helper for :py:meth:`combine_pairs` and :py:meth:`reduce_pairs`."""
         step = self._get_step(step_num, MRStep)
 
         task = step[mrc]
-        task_init = step[mrc + '_init']
-        task_final = step[mrc + '_final']
+        task_init = step[f'{mrc}_init']
+        task_final = step[f'{mrc}_final']
         if task is None:
             raise ValueError('No %s in step %d' % (mrc, step_num))
 
         if task_init:
-            for k, v in task_init() or ():
-                yield k, v
-
+            yield from task_init() or ()
         # group all values of the same key together, and pass to the reducer
         #
         # be careful to use generators for everything, to allow for
         # very large groupings of values
         for key, pairs_for_key in itertools.groupby(pairs, lambda k_v: k_v[0]):
             values = (value for _, value in pairs_for_key)
-            for k, v in task(key, values) or ():
-                yield k, v
-
+            yield from task(key, values) or ()
         if task_final:
-            for k, v in task_final() or ():
-                yield k, v
+            yield from task_final() or ()
 
     def run_spark(self, step_num):
         """Run the Spark code for the given step.
@@ -912,10 +906,10 @@ class MRJob(object):
         spark_method(input_path, output_path)
 
     def _steps_desc(self):
-        step_descs = []
-        for step_num, step in enumerate(self.steps()):
-            step_descs.append(step.description(step_num))
-        return step_descs
+        return [
+            step.description(step_num)
+            for step_num, step in enumerate(self.steps())
+        ]
 
     @classmethod
     def mr_job_script(cls):
@@ -942,12 +936,10 @@ class MRJob(object):
 
         for path in paths:
             if path == '-':
-                for line in self.stdin:
-                    yield line
+                yield from self.stdin
             else:
                 with open(path, 'rb') as f:
-                    for line in to_lines(decompress(f, path)):
-                        yield line
+                    yield from to_lines(decompress(f, path))
 
     def _wrap_protocols(self, step_num, step_type):
         """Pick the protocol classes to use for reading and writing
@@ -1043,10 +1035,7 @@ class MRJob(object):
             else:
                 write = self.internal_protocol()
 
-            if real_num == 0:
-                read = self.input_protocol()
-            else:
-                read = self.internal_protocol()
+            read = self.input_protocol() if real_num == 0 else self.internal_protocol()
             return read, write
 
     def pick_protocols(self, step_num, step_type):
@@ -1231,8 +1220,7 @@ class MRJob(object):
         :py:attr:`INPUT_PROTOCOL`.
         """
         if not isinstance(self.INPUT_PROTOCOL, type):
-            log.warning('INPUT_PROTOCOL should be a class, not %s' %
-                        self.INPUT_PROTOCOL)
+            log.warning(f'INPUT_PROTOCOL should be a class, not {self.INPUT_PROTOCOL}')
         return self.INPUT_PROTOCOL()
 
     def internal_protocol(self):
@@ -1241,8 +1229,10 @@ class MRJob(object):
         :py:attr:`INTERNAL_PROTOCOL`.
         """
         if not isinstance(self.INTERNAL_PROTOCOL, type):
-            log.warning('INTERNAL_PROTOCOL should be a class, not %s' %
-                        self.INTERNAL_PROTOCOL)
+            log.warning(
+                f'INTERNAL_PROTOCOL should be a class, not {self.INTERNAL_PROTOCOL}'
+            )
+
         return self.INTERNAL_PROTOCOL()
 
     def output_protocol(self):
@@ -1251,8 +1241,7 @@ class MRJob(object):
         :py:attr:`OUTPUT_PROTOCOL`.
         """
         if not isinstance(self.OUTPUT_PROTOCOL, type):
-            log.warning('OUTPUT_PROTOCOL should be a class, not %s' %
-                        self.OUTPUT_PROTOCOL)
+            log.warning(f'OUTPUT_PROTOCOL should be a class, not {self.OUTPUT_PROTOCOL}')
         return self.OUTPUT_PROTOCOL()
 
     #: Protocol for reading input to the first mapper in your job.
@@ -1518,7 +1507,7 @@ class MRJob(object):
 
         # catch path instead of a list of paths
         if isinstance(attr_value, string_types):
-            raise TypeError('%s must be a list or other sequence.' % attr_name)
+            raise TypeError(f'{attr_name} must be a list or other sequence.')
 
         script_dir = os.path.dirname(self.mr_job_script())
         paths = []

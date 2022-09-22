@@ -121,7 +121,7 @@ class MockBoto3TestCase(SandboxedTestCase):
 
     def add_mock_emr_cluster(self, cluster):
         if cluster['Id'] in self.mock_emr_clusters:
-            raise ValueError('mock cluster %s already exists' % cluster.id)
+            raise ValueError(f'mock cluster {cluster.id} already exists')
 
         for field in ('_BootstrapActions', '_InstanceGroups', '_Steps'):
             cluster.setdefault(field, [])
@@ -145,8 +145,8 @@ class MockBoto3TestCase(SandboxedTestCase):
 
         # Create temporary directories and add them to MOCK_SSH_ROOTS
         master_ssh_root = tempfile.mkdtemp(prefix='master_ssh_root.')
-        os.environ['MOCK_SSH_ROOTS'] = 'testmaster=%s' % master_ssh_root
-        mock_ssh_dir('testmaster', _EMR_LOG_DIR + '/hadoop/history')
+        os.environ['MOCK_SSH_ROOTS'] = f'testmaster={master_ssh_root}'
+        mock_ssh_dir('testmaster', f'{_EMR_LOG_DIR}/hadoop/history')
 
         if not hasattr(self, 'worker_ssh_roots'):
             self.worker_ssh_roots = []
@@ -251,14 +251,11 @@ class MockBoto3TestCase(SandboxedTestCase):
             kwargs['mock_s3_fs'] = self.mock_s3_fs
             return MockS3Client(**kwargs)
         else:
-            raise NotImplementedError(
-                'mock %s service not supported' % service_name)
+            raise NotImplementedError(f'mock {service_name} service not supported')
 
     # mock boto3.resource()
     def resource(self, service_name, **kwargs):
-        if service_name == 's3':
-            kwargs['mock_s3_fs'] = self.mock_s3_fs
-            return MockS3Resource(**kwargs)
-        else:
-            raise NotImplementedError(
-                'mock %s resource not supported' % service_name)
+        if service_name != 's3':
+            raise NotImplementedError(f'mock {service_name} resource not supported')
+        kwargs['mock_s3_fs'] = self.mock_s3_fs
+        return MockS3Resource(**kwargs)

@@ -68,7 +68,7 @@ def _pool_name(cluster):
 
 def _cluster_name_suffix(hash, name):
     fields = [mrjob.__version__, name, hash]
-    return ' pooling:%s' % ','.join(fields)
+    return f" pooling:{','.join(fields)}"
 
 
 def _parse_cluster_name_suffix(cluster_name):
@@ -137,11 +137,7 @@ def _instance_groups_satisfy(actual_igs, requested_igs):
         log.debug("    missing instance group roles")
         return False
 
-    for role in r:
-        if not _igs_for_same_role_satisfy(a[role], r[role]):
-            return False
-
-    return True
+    return all(_igs_for_same_role_satisfy(a[role], r[role]) for role in r)
 
 
 def _igs_for_same_role_satisfy(actual_igs, requested_ig):
@@ -157,11 +153,11 @@ def _igs_for_same_role_satisfy(actual_igs, requested_ig):
         return False
 
     # EBS volumes
-    if not all(_ebs_satisfies(ig, requested_ig) for ig in actual_igs):
-        return False
-
-    # CPU (this returns # of compute units or None)
-    return _igs_satisfy_cpu(actual_igs, requested_ig)
+    return (
+        _igs_satisfy_cpu(actual_igs, requested_ig)
+        if all(_ebs_satisfies(ig, requested_ig) for ig in actual_igs)
+        else False
+    )
 
 
 def _ig_satisfies_bid_price(actual_ig, requested_ig):
@@ -184,11 +180,10 @@ def _ig_satisfies_bid_price(actual_ig, requested_ig):
     try:
         if float(actual_ig['BidPrice']) >= float(requested_ig.get('BidPrice')):
             return True
-        else:
-            # low bid prices mean cluster is more likely to be
-            # yanked away
-            log.debug('    bid price too low')
-            return False
+        # low bid prices mean cluster is more likely to be
+        # yanked away
+        log.debug('    bid price too low')
+        return False
     except ValueError:
         log.debug('    non-float bid price')
         return False
@@ -208,9 +203,8 @@ def _ig_satisfies_mem(actual_ig, requested_ig):
         if (EC2_INSTANCE_TYPE_TO_MEMORY[actual_type] >=
                 EC2_INSTANCE_TYPE_TO_MEMORY[requested_type]):
             return True
-        else:
-            log.debug('    too little memory')
-            return False
+        log.debug('    too little memory')
+        return False
     except KeyError:
         log.debug('    unknown instance type')
         return False
@@ -247,9 +241,8 @@ def _igs_satisfy_cpu(actual_igs, requested_ig):
 
     if actual_cu >= requested_cu:
         return True
-    else:
-        log.debug('    not enough compute units')
-        return False
+    log.debug('    not enough compute units')
+    return False
 
 
 ### instance fleets ###
@@ -283,11 +276,7 @@ def _instance_fleets_satisfy(actual_fleets, req_fleets):
         log.debug("    missing instance fleet roles")
         return False
 
-    for role in r:
-        if not _fleet_for_same_role_satisfies(a[role], r[role]):
-            return False
-
-    return True
+    return all(_fleet_for_same_role_satisfies(a[role], r[role]) for role in r)
 
 
 def _fleet_for_same_role_satisfies(actual_fleet, req_fleet):
@@ -389,7 +378,7 @@ def _fleet_spec_satsifies(actual_spec, req_spec):
             return False
 
         try:
-            if not float(actual_bid_price) >= float(req_bid_price):
+            if float(actual_bid_price) < float(req_bid_price):
                 log.debug('    bid price too low')
                 return False
         except TypeError:
@@ -627,7 +616,7 @@ def _attempt_to_lock_cluster(
 
     if state not in step_accepting_states:
         # this could happen if the cluster were TERMINATING, for example
-        log.info('  cluster is not accepting steps, state is %s' % state)
+        log.info(f'  cluster is not accepting steps, state is {state}')
         return False
 
     lock = _get_cluster_lock(cluster)
@@ -637,7 +626,7 @@ def _attempt_to_lock_cluster(
         try:
             their_job_key, expiry = _parse_cluster_lock(lock)
         except ValueError:
-            log.info('  ignoring invalid pool lock: %s' % lock)
+            log.info(f'  ignoring invalid pool lock: {lock}')
 
         if expiry and expiry > start:
             log.info('  locked by %s for %.1f seconds' % (
@@ -647,8 +636,8 @@ def _attempt_to_lock_cluster(
     # add our lock
     our_lock = _make_cluster_lock(job_key, start + _CLUSTER_LOCK_SECS)
 
-    log.debug('  adding tag to cluster %s:' % cluster_id)
-    log.debug('    %s=%s' % (_POOL_LOCK_KEY, our_lock))
+    log.debug(f'  adding tag to cluster {cluster_id}:')
+    log.debug(f'    {_POOL_LOCK_KEY}={our_lock}')
     emr_client.add_tags(
         ResourceId=cluster_id,
         Tags=[dict(Key=_POOL_LOCK_KEY, Value=our_lock)]
@@ -670,7 +659,7 @@ def _attempt_to_lock_cluster(
 
     if state not in step_accepting_states:
         # this could happen if the cluster were TERMINATING, for example
-        log.info('  cluster is not accepting steps, state is %s' % state)
+        log.info(f'  cluster is not accepting steps, state is {state}')
         return False
 
     if cluster['StepConcurrencyLevel'] > 1:
@@ -697,7 +686,7 @@ def _attempt_to_lock_cluster(
         except ValueError:
             pass
 
-        log.info('  lock was overwritten by %s' % their_job_desc)
+        log.info(f'  lock was overwritten by {their_job_desc}')
         return False
 
     # make sure we have enough time to add steps and have them run

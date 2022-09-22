@@ -45,12 +45,12 @@ class JoinTestCase(SandboxedTestCase):
         self.fs = Filesystem()
 
     def test_local_paths(self):
-        self.assertEqual(self.fs.join('foo', 'bar'),
-                         'foo%sbar' % os.path.sep)
-        self.assertEqual(self.fs.join('foo', '%sbar' % os.path.sep),
-                         '%sbar' % os.path.sep)
-        self.assertEqual(self.fs.join('foo', 'bar', 'baz'),
-                         'foo%sbar%sbaz' % (os.path.sep, os.path.sep))
+        self.assertEqual(self.fs.join('foo', 'bar'), f'foo{os.path.sep}bar')
+        self.assertEqual(self.fs.join('foo', f'{os.path.sep}bar'), f'{os.path.sep}bar')
+        self.assertEqual(
+            self.fs.join('foo', 'bar', 'baz'),
+            f'foo{os.path.sep}bar{os.path.sep}baz',
+        )
 
     def test_path_onto_uri(self):
         self.assertEqual(self.fs.join('hdfs://host', 'path'),

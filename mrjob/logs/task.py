@@ -227,8 +227,7 @@ def _match_task_log_path(path, application_id=None, job_id=None):
 
     Optionally, filter by application_id (YARN) or job_id (pre-YARN).
     """
-    m = _PRE_YARN_TASK_LOG_PATH_RE.match(path)
-    if m:
+    if m := _PRE_YARN_TASK_LOG_PATH_RE.match(path):
         if job_id and job_id != _to_job_id(m.group('attempt_id')):
             return None  # matches, but wrong job_id
 
@@ -236,8 +235,7 @@ def _match_task_log_path(path, application_id=None, job_id=None):
             attempt_id=m.group('attempt_id'),
             log_type=m.group('log_type'))
 
-    m = _YARN_TASK_LOG_PATH_RE.match(path)
-    if m:
+    if m := _YARN_TASK_LOG_PATH_RE.match(path):
         if application_id and application_id != m.group('application_id'):
             return None  # matches, but wrong application_id
 
@@ -296,9 +294,9 @@ def _interpret_task_logs(fs, matches, partial=True, log_callback=None):
         if stderr_path:
             if log_callback:
                 log_callback(stderr_path)
-            task_error = _parse_task_stderr(_cat_log_lines(fs, stderr_path))
-
-            if task_error:
+            if task_error := _parse_task_stderr(
+                _cat_log_lines(fs, stderr_path)
+            ):
                 task_error['path'] = stderr_path
                 error['task_error'] = task_error
             else:
@@ -317,7 +315,7 @@ def _interpret_task_logs(fs, matches, partial=True, log_callback=None):
             # if no entry in Hadoop syslog, probably just noise
             continue
 
-        error.update(syslog_error)
+        error |= syslog_error
         error['hadoop_error']['path'] = syslog_path
 
         # patch in IDs we learned from path
@@ -364,21 +362,18 @@ def _parse_task_syslog_records(records):
     for record in records:
         message = record['message']
 
-        m = _OPENING_FOR_READING_RE.match(message)
-        if m:
+        if m := _OPENING_FOR_READING_RE.match(message):
             result['split'] = dict(path=m.group('path'))
             continue
 
-        m = _YARN_INPUT_SPLIT_RE.match(message)
-        if m:
+        if m := _YARN_INPUT_SPLIT_RE.match(message):
             result['split'] = dict(
                 path=m.group('path'),
                 start_line=int(m.group('start_line')),
                 num_lines=int(m.group('num_lines')))
             continue
 
-        m = _JAVA_TRACEBACK_RE.search(message)
-        if m:
+        if m := _JAVA_TRACEBACK_RE.search(message):
             result['hadoop_error'] = dict(
                 message=message,
                 num_lines=record['num_lines'],
@@ -388,8 +383,7 @@ def _parse_task_syslog_records(records):
 
         if (record['logger'] == _SPARK_APP_MASTER_LOGGER and
                 record['level'] == 'ERROR'):
-            m = _SPARK_APP_EXITED_RE.match(message)
-            if m:
+            if m := _SPARK_APP_EXITED_RE.match(message):
                 result['hadoop_error'] = dict(
                     message=message,
                     num_lines=record['num_lines'],

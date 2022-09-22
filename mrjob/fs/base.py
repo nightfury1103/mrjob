@@ -62,8 +62,7 @@ class Filesystem(object):
             if i > 0:
                 yield b''  # mark end of previous file
 
-            for line in self._cat_file(filename):
-                yield line
+            yield from self._cat_file(filename)
 
     def du(self, path_glob):
         """Get the total size of files matching ``path_glob``
@@ -98,15 +97,11 @@ class Filesystem(object):
         """Join *paths* onto *path* (which may be a URI)"""
         all_paths = (path,) + paths
 
-        # if there's a URI, we only care about it and what follows
         for i in range(len(all_paths), 0, -1):
             if is_uri(all_paths[i - 1]):
                 scheme, netloc, uri_path = urlparse(all_paths[i - 1])[:3]
-                return '%s://%s%s' % (
-                    scheme, netloc, posixpath.join(
-                        uri_path or '/', *all_paths[i:]))
-        else:
-            return os.path.join(*all_paths)
+                return f"{scheme}://{netloc}{posixpath.join(uri_path or '/', *all_paths[i:])}"
+        return os.path.join(*all_paths)
 
     def mkdir(self, path):
         """Create the given dir and its subdirs (if they don't already

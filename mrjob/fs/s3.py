@@ -58,12 +58,10 @@ def _endpoint_url(host_or_uri):
 
     Otherwise, pass through as-is.
     """
-    if not host_or_uri:
-        return host_or_uri
-    elif is_uri(host_or_uri):
+    if not host_or_uri or host_or_uri and is_uri(host_or_uri):
         return host_or_uri
     else:
-        return 'https://' + host_or_uri
+        return f'https://{host_or_uri}'
 
 
 def _get_bucket_region(client, bucket_name):
@@ -127,11 +125,7 @@ class S3Filesystem(Filesystem):
         # (not s3n://)
         scheme = urlparse(path_glob).scheme
 
-        # support globs
-        glob_match = GLOB_RE.match(path_glob)
-
-        # we're going to search for all keys starting with base_uri
-        if glob_match:
+        if glob_match := GLOB_RE.match(path_glob):
             # cut it off at first wildcard
             base_uri = glob_match.group(1)
         else:
@@ -141,9 +135,9 @@ class S3Filesystem(Filesystem):
 
         # allow subdirectories of the path/glob
         if path_glob and not path_glob.endswith('/'):
-            dir_glob = path_glob + '/*'
+            dir_glob = f'{path_glob}/*'
         else:
-            dir_glob = path_glob + '*'
+            dir_glob = f'{path_glob}*'
 
         try:
             bucket = self.get_bucket(bucket_name)
@@ -153,7 +147,7 @@ class S3Filesystem(Filesystem):
             raise
 
         for key in bucket.objects.filter(Prefix=base_name):
-            uri = "%s://%s/%s" % (scheme, bucket_name, key.key)
+            uri = f"{scheme}://{bucket_name}/{key.key}"
 
             # enforce globbing
             if not (fnmatch.fnmatchcase(uri, path_glob) or
@@ -163,10 +157,10 @@ class S3Filesystem(Filesystem):
             yield uri, key
 
     def md5sum(self, path):
-        k = self._get_s3_key(path)
-        if not k:
+        if k := self._get_s3_key(path):
+            return k.e_tag.strip('"')
+        else:
             raise IOError('Key %r does not exist' % (path,))
-        return k.e_tag.strip('"')
 
     def _cat_file(self, path):
         # stream lines from the s3 key
@@ -219,7 +213,7 @@ class S3Filesystem(Filesystem):
     def rm(self, path_glob):
         """Remove all files matching the given glob."""
         for uri, key in self._ls(path_glob):
-            log.debug('deleting ' + uri)
+            log.debug(f'deleting {uri}')
             key.delete()
 
     def touchz(self, path):

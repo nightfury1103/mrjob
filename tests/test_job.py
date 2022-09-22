@@ -913,11 +913,8 @@ class FileOptionsTestCase(SandboxedTestCase):
             self.assertIn(n_file_path, runner._working_dir_mgr.paths())
 
             runner.run()
-            output = set()
-            for _, value in mr_job.parse_output(runner.cat_output()):
-                output.add(value)
-
-        self.assertEqual(set(output), set([0, 1, ((2 ** 3) ** 3) ** 3]))
+            output = {value for _, value in mr_job.parse_output(runner.cat_output())}
+        self.assertEqual(set(output), {0, 1, ((2 ** 3) ** 3) ** 3})
 
 
 class RunJobTestCase(SandboxedTestCase):
