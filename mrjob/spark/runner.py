@@ -166,12 +166,13 @@ class SparkMRJobRunner(MRJobBinRunner):
                     'You must set mrjob_cls to run streaming steps')
 
             for mrc in ('mapper', 'combiner', 'reducer'):
-                if step.get(mrc):
-                    if 'command' in step[mrc] or 'pre_filter' in step[mrc]:
-                        raise NotImplementedError(
-                            "step %d's %s runs a command, but spark"
-                            " runner does not support commands" % (
-                                step_num, mrc))
+                if step.get(mrc) and (
+                    'command' in step[mrc] or 'pre_filter' in step[mrc]
+                ):
+                    raise NotImplementedError(
+                        "step %d's %s runs a command, but spark"
+                        " runner does not support commands" % (
+                            step_num, mrc))
 
     @classmethod
     def _default_opts(cls):
@@ -191,17 +192,14 @@ class SparkMRJobRunner(MRJobBinRunner):
     def _pick_spark_tmp_dir(self):
         if self._opts['spark_tmp_dir']:
             return self.fs.join(self._opts['spark_tmp_dir'], self._job_key)
-        else:
-            master = self._spark_master() or 'local'
-            if master.startswith('local'):  # including local-cluster
-                # need a local temp dir
-                # add "-spark" so we don't collide with default local temp dir
-                return os.path.join(
-                    gettempdir(), self._job_key + '-spark')
-            else:
-                # use HDFS (same default as HadoopJobRunner)
-                return posixpath.join(
-                    fully_qualify_hdfs_path('tmp/mrjob'), self._job_key)
+        master = self._spark_master() or 'local'
+        return (
+            os.path.join(gettempdir(), f'{self._job_key}-spark')
+            if master.startswith('local')
+            else posixpath.join(
+                fully_qualify_hdfs_path('tmp/mrjob'), self._job_key
+            )
+        )
 
     def _default_step_output_dir(self):
         return self.fs.join(self._spark_tmp_dir, 'step-output')
@@ -253,10 +251,9 @@ class SparkMRJobRunner(MRJobBinRunner):
     def _create_job_script_zip(self):
         if not self._job_script_zip_path:
             zip_path = os.path.join(self._get_local_tmp_dir(), 'script.zip')
-            name_in_zip = self._job_script_module_name() + '.py'
+            name_in_zip = f'{self._job_script_module_name()}.py'
 
-            log.debug('archiving %s -> %s as %s' % (
-                self._script_path, zip_path, name_in_zip))
+            log.debug(f'archiving {self._script_path} -> {zip_path} as {name_in_zip}')
             with _create_zip_file(zip_path) as zip_file:
                 zip_file.write(self._script_path, arcname=name_in_zip)
 
@@ -322,7 +319,7 @@ class SparkMRJobRunner(MRJobBinRunner):
         spark_submit_args = self._args_for_spark_step(step_num, last_step_num)
 
         env = dict(os.environ)
-        env.update(self._spark_cmdenv(step_num))
+        env |= self._spark_cmdenv(step_num)
 
         returncode, step_interpretation = self._run_spark_submit(
             spark_submit_args, env, record_callback=_log_log4j_record)
@@ -353,8 +350,7 @@ class SparkMRJobRunner(MRJobBinRunner):
             self._counters.append({})
 
         if returncode:
-            error = _pick_error(dict(step=step_interpretation))
-            if error:
+            if error := _pick_error(dict(step=step_interpretation)):
                 _log_probable_cause_of_failure(log, error)
 
             reason = str(CalledProcessError(returncode, spark_submit_args))
@@ -385,11 +381,7 @@ class SparkMRJobRunner(MRJobBinRunner):
             return super(SparkMRJobRunner, self)._spark_script_args(
                 step_num, last_step_num)
 
-        args = []
-
-        # class name
-        args.append('%s.%s' % (self._job_script_module_name(),
-                               self._mrjob_cls.__name__))
+        args = [f'{self._job_script_module_name()}.{self._mrjob_cls.__name__}']
 
         # INPUT
         args.append(
@@ -433,13 +425,9 @@ class SparkMRJobRunner(MRJobBinRunner):
         args.extend(['--first-step-num', str(step_num),
                      '--last-step-num', str(last_step_num)])
 
-        # --job-args (passthrough args)
-
-        # if on local[*] master, keep file upload args as-is (see #2031)
-        job_args = self._mr_job_extra_args(
-            local=not self._spark_executors_have_own_wd())
-
-        if job_args:
+        if job_args := self._mr_job_extra_args(
+            local=not self._spark_executors_have_own_wd()
+        ):
             args.extend(['--job-args', cmd_line(job_args)])
 
         # --compression-codec

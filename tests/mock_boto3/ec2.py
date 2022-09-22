@@ -39,7 +39,7 @@ class MockEC2Client(object):
 
         region_name = region_name or _DEFAULT_AWS_REGION
         if not endpoint_url:
-            endpoint_url = 'https://ec2.%s.amazonaws.com' % region_name
+            endpoint_url = f'https://ec2.{region_name}.amazonaws.com'
 
         self.meta = MockClientMeta(
             endpoint_url=endpoint_url,
@@ -49,7 +49,7 @@ class MockEC2Client(object):
         images = []
 
         for image in self.mock_ec2_images:
-            if not (Owners is None or image.get('ImageOwnerAlias') in Owners):
+            if Owners is not None and image.get('ImageOwnerAlias') not in Owners:
                 continue
 
             if Filters and not _matches_image_filters(image, Filters):
@@ -67,7 +67,7 @@ def _matches_image_filters(image, Filters):
                 report='Unknown parameter in Filters')
 
         field = _hyphen_to_camel(Filter['Name'])
-        if not image.get(field) in Filter['Values']:
+        if image.get(field) not in Filter['Values']:
             return False
 
     return True

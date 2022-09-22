@@ -26,7 +26,7 @@ class MRWordCount(MRJob):
     """ Trivial Job that returns the number of words in each input file
     """
     def mapper(self, _, line):
-        for word in WORD_RE.findall(line):
+        for _ in WORD_RE.findall(line):
             yield (jobconf_from_env("mapreduce.map.input.file"), 1)
 
     def combiner(self, name, counts):

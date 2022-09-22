@@ -63,7 +63,7 @@ class MockS3Client(object):
             if region_name == _DEFAULT_AWS_REGION:
                 endpoint_url = 'https://s3.amazonaws.com'
             else:
-                endpoint_url = 'https://s3-%s.amazonaws.com' % region_name
+                endpoint_url = f'https://s3-{region_name}.amazonaws.com'
 
         self.meta = MockClientMeta(
             endpoint_url=endpoint_url,
@@ -108,7 +108,7 @@ class MockS3Client(object):
                 creation_date=_boto3_today(), keys={}, location=location)
 
         # "Location" here actually refers to the bucket name
-        return dict(Location=('/' + Bucket))
+        return dict(Location=f'/{Bucket}')
 
     def get_bucket_location(self, Bucket):
         self._check_bucket_exists(Bucket, 'GetBucketLocation')
@@ -120,7 +120,7 @@ class MockS3Client(object):
     def head_bucket(self, Bucket):
         self._check_bucket_exists(Bucket, 'HeadBucket')
 
-        return dict()
+        return {}
 
     def list_buckets(self):
         buckets = [
@@ -333,9 +333,9 @@ class MockS3Object(object):
         if self.bucket_name not in self.meta.client.mock_s3_fs:
             # upload_file() is a higher-order operation, has fancy errors
             raise S3UploadFailedError(
-                'Failed to upload %s to %s/%s: %s' % (
-                    path, self.bucket_name, self.key,
-                    str(_no_such_bucket_error('PutObject'))))
+                f"Failed to upload {path} to {self.bucket_name}/{self.key}: {str(_no_such_bucket_error('PutObject'))}"
+            )
+
 
         # verify that config doesn't have empty part size (see #2033)
         #
@@ -388,11 +388,7 @@ class MockStreamingBody(object):
     def read(self, amt=None):
         start = self._offset
 
-        if amt is None:
-            end = len(self._data)
-        else:
-            end = start + amt
-
+        end = len(self._data) if amt is None else start + amt
         self._offset = end
         return self._data[start:end]
 

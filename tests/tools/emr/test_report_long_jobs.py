@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Very basic tests for the audit_usage script"""
+
 import sys
 from datetime import datetime
 from datetime import timedelta
@@ -223,14 +224,14 @@ CLUSTERS = [
     ),
 ]
 
-CLUSTERS_BY_ID = dict((cluster['Id'], cluster) for cluster in CLUSTERS)
+CLUSTERS_BY_ID = {cluster['Id']: cluster for cluster in CLUSTERS}
 
-CLUSTER_SUMMARIES_BY_ID = dict(
-    (cluster['Id'], dict(
-        Id=cluster['Id'],
-        Name=cluster['Name'],
-        Status=cluster['Status']))
-    for cluster in CLUSTERS)
+CLUSTER_SUMMARIES_BY_ID = {
+    cluster['Id']: dict(
+        Id=cluster['Id'], Name=cluster['Name'], Status=cluster['Status']
+    )
+    for cluster in CLUSTERS
+}
 
 
 class ReportLongJobsTestCase(MockBoto3TestCase):
@@ -266,7 +267,7 @@ class ReportLongJobsTestCase(MockBoto3TestCase):
         )
         main(['-q', '--no-conf'])
 
-        lines = [line for line in StringIO(self.stdout.getvalue())]
+        lines = list(StringIO(self.stdout.getvalue()))
         self.assertEqual(len(lines), len(CLUSTERS_BY_ID) - 1)
         self.assertNotIn('j-COMPLETED', self.stdout.getvalue())
 
@@ -276,7 +277,7 @@ class ReportLongJobsTestCase(MockBoto3TestCase):
 
         main(['-q', '--no-conf', '-x', 'my_key,my_value'])
 
-        lines = [line for line in StringIO(self.stdout.getvalue())]
+        lines = list(StringIO(self.stdout.getvalue()))
         self.assertEqual(len(lines), len(CLUSTERS_BY_ID) - 2)
         self.assertNotIn('j-COMPLETED', self.stdout.getvalue())
         self.assertNotIn('j-RUNNING1STEP', self.stdout.getvalue())

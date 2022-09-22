@@ -87,17 +87,16 @@ def _parse_hadoop_log4j_records(lines, pre_filter=None):
         # record_callback to fire on the correct line. The problem is that
         # we don't emit records until we see the next line (to handle
         # multiline records), so the callback would fire in the wrong order
-        if pre_filter:
-            if pre_filter(line):
-                if last_record:
-                    last_record['num_lines'] = (
-                        line_num - last_record['start_line'])
-                    yield last_record
+        if pre_filter and pre_filter(line):
+            if last_record:
+                last_record['num_lines'] = (
+                    line_num - last_record['start_line'])
+                yield last_record
 
-                yield fake_record()
+            yield fake_record()
 
-                last_record = None
-                continue
+            last_record = None
+            continue
 
         m = (_HADOOP_LOG4J_LINE_RE.match(line) or
              _HADOOP_LOG4J_LINE_ALTERNATE_RE.match(line))

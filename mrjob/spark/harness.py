@@ -158,11 +158,7 @@ def main(cmd_line_args=None):
     # load initial data
     from pyspark import SparkContext
 
-    if args.job_args:
-        job_args = shlex_split(args.job_args)
-    else:
-        job_args = []
-
+    job_args = shlex_split(args.job_args) if args.job_args else []
     # determine hadoop_*_format, steps
     # try to avoid instantiating a job in the driver; see #2044
     job = None
@@ -214,9 +210,7 @@ def main(cmd_line_args=None):
         return increment_counter
 
     def make_mrc_job(mrc, step_num):
-        j = job_class(job_args + [
-            '--%s' % mrc, '--step-num=%d' % step_num
-        ])
+        j = job_class((job_args + [f'--{mrc}', '--step-num=%d' % step_num]))
 
         # patch increment_counter() to update the accumulator for this step
         j.increment_counter = make_increment_counter(step_num)
@@ -416,11 +410,7 @@ def _run_mapper(make_mrc_job, step_num, rdd, rdd_includes_input_path):
         # decode lines into key-value pairs (as a generator, not a list)
         #
         # line -> (k, v)
-        if read:
-            pairs = (read(line) for line in lines)
-        else:
-            pairs = lines  # was never encoded
-
+        pairs = (read(line) for line in lines) if read else lines
         # reduce_pairs() runs key-value pairs through mapper
         #
         # (k, v), ... -> (k, v), ...
@@ -469,9 +459,8 @@ def _run_combiner(combiner_job, rdd, sort_values=False, num_reducers=None):
             return list(
                 combiner_job.combine_pairs(pairs1 + pairs2, step_num),
             )
-        else:
-            pairs1.extend(pairs2)
-            return pairs1
+        pairs1.extend(pairs2)
+        return pairs1
 
     # include key in "value", so MRJob combiner can see it
     #
@@ -564,11 +553,7 @@ def _run_reducer(make_mrc_job, step_num, rdd, num_reducers=None):
         # decode lines into key-value pairs (as a generator, not a list)
         #
         # line -> (k, v)
-        if read:
-            pairs = (read(line) for line in lines)
-        else:
-            pairs = lines  # pairs were never encoded
-
+        pairs = (read(line) for line in lines) if read else lines
         # reduce_pairs() runs key-value pairs through reducer
         #
         # (k, v), ... -> (k, v), ...

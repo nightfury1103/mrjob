@@ -62,10 +62,9 @@ def _ls_logs(fs, log_dir_stream, matcher, is_spark=False, **kwargs):
     # wrapper for fs.ls() that turns IOErrors into warnings
     def _fs_ls(path):
         try:
-            log.debug('    listing logs in %s' % log_dir)
+            log.debug(f'    listing logs in {log_dir}')
             if fs.exists(log_dir):
-                for path in fs.ls(log_dir):
-                    yield path
+                yield from fs.ls(log_dir)
         except (IOError, OSError) as e:
             log.warning("couldn't ls() %s: %r" % (log_dir, e))
 
@@ -87,14 +86,8 @@ def _ls_logs(fs, log_dir_stream, matcher, is_spark=False, **kwargs):
             if matches:
                 matched = True
 
-                if is_spark:
-                    matches = _sort_for_spark(matches)
-                else:
-                    matches = _sort_by_recency(matches)
-
-                for match in matches:
-                    yield match
-
+                matches = _sort_for_spark(matches) if is_spark else _sort_by_recency(matches)
+                yield from matches
         if matched:
             return  # e.g. don't check S3 if we can get logs via SSH
 

@@ -339,8 +339,7 @@ class TestsToPort:
                                gz_path_2, path_3])
         with mr_job.make_runner() as r:
             splits = r._get_file_splits([gz_path_1, gz_path_2, path_3], 1)
-            self.assertEqual(
-                len(set(s['task_num'] for s in splits.values())), 3)
+            self.assertEqual(len({s['task_num'] for s in splits.values()}), 3)
 
 
 class LocalMRJobRunnerNoSymlinksTestCase(LocalMRJobRunnerEndToEndTestCase):
@@ -982,7 +981,7 @@ class LocalInputManifestTestCase(InlineInputManifestTestCase):
                 b'contact us at +1 201 867 5309')
 
         touched_path = join(self.tmp_dir, 'touched')
-        setup_cmd = 'touch ' + touched_path
+        setup_cmd = f'touch {touched_path}'
 
         self.assertFalse(exists(touched_path))
 
@@ -1100,9 +1099,10 @@ class LocalRunnerSparkTestCase(SandboxedTestCase):
         fish_path = self.makefile('fish', b'salmon')
         fowl_path = self.makefile('fowl', b'goose')
 
-        job = MRSparkOSWalk(['-r', 'local',
-                             '--files',
-                             '%s#ghoti,%s' % (fish_path, fowl_path)])
+        job = MRSparkOSWalk(
+            ['-r', 'local', '--files', f'{fish_path}#ghoti,{fowl_path}']
+        )
+
         job.sandbox()
 
         file_sizes = {}
@@ -1142,9 +1142,17 @@ class LocalRunnerSparkTestCase(SandboxedTestCase):
 
         f_tar_gz = make_archive(join(self.tmp_dir, 'f'), 'gztar', f_dir)
 
-        job = MRSparkOSWalk(['-r', 'local',
-                             '--archives', '%s#f-unpacked' % f_tar_gz,
-                             '--dirs', f_dir])
+        job = MRSparkOSWalk(
+            [
+                '-r',
+                'local',
+                '--archives',
+                f'{f_tar_gz}#f-unpacked',
+                '--dirs',
+                f_dir,
+            ]
+        )
+
         job.sandbox()
 
         file_sizes = {}

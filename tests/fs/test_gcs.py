@@ -243,12 +243,16 @@ class GCSFSTestCase(MockGoogleTestCase):
             'gs://w/b': b'',
         })
 
-        self.assertEqual(set(self.fs.ls('gs://w/')),
-                         set(['gs://w/a', 'gs://w/a/b',
-                              'gs://w/ab', 'gs://w/b']))
-        self.assertEqual(set(self.fs.ls('gs://w/*')),
-                         set(['gs://w/a', 'gs://w/a/b',
-                              'gs://w/ab', 'gs://w/b']))
+        self.assertEqual(
+            set(self.fs.ls('gs://w/')),
+            {'gs://w/a', 'gs://w/a/b', 'gs://w/ab', 'gs://w/b'},
+        )
+
+        self.assertEqual(
+            set(self.fs.ls('gs://w/*')),
+            {'gs://w/a', 'gs://w/a/b', 'gs://w/ab', 'gs://w/b'},
+        )
+
         self.assertEqual(list(self.fs.ls('gs://w/*/')),
                          ['gs://w/a/b'])
         self.assertEqual(list(self.fs.ls('gs://w/*/*')),
@@ -256,10 +260,13 @@ class GCSFSTestCase(MockGoogleTestCase):
         self.assertEqual(list(self.fs.ls('gs://w/a?')),
                          ['gs://w/ab'])
         # * can match /
-        self.assertEqual(set(self.fs.ls('gs://w/a*')),
-                         set(['gs://w/a', 'gs://w/a/b', 'gs://w/ab']))
-        self.assertEqual(set(self.fs.ls('gs://w/*b')),
-                         set(['gs://w/a/b', 'gs://w/ab', 'gs://w/b']))
+        self.assertEqual(
+            set(self.fs.ls('gs://w/a*')), {'gs://w/a', 'gs://w/a/b', 'gs://w/ab'}
+        )
+
+        self.assertEqual(
+            set(self.fs.ls('gs://w/*b')), {'gs://w/a/b', 'gs://w/ab', 'gs://w/b'}
+        )
 
     def test_du(self):
         self.put_gcs_multi({

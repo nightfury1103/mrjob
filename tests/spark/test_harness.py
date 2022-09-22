@@ -141,13 +141,12 @@ class SparkHarnessOutputComparisonBaseTestCase(
             skip_internal_protocol=False):
         from tests.mr_spark_harness import MRSparkHarness
 
-        job_class_path = '%s.%s' % (job_class.__module__, job_class.__name__)
+        job_class_path = f'{job_class.__module__}.{job_class.__name__}'
 
         harness_job_args = ['-r', runner_alias, '--job-class', job_class_path]
         if spark_conf:
             for key, value in spark_conf.items():
-                harness_job_args.append('--jobconf')
-                harness_job_args.append('%s=%s' % (key, value))
+                harness_job_args.extend(('--jobconf', f'{key}={value}'))
         if compression_codec:
             harness_job_args.append('--compression-codec')
             harness_job_args.append(compression_codec)
@@ -212,14 +211,7 @@ class SparkHarnessOutputComparisonBaseTestCase(
 
             reference_output = sorted(to_lines(runner.cat_output()))
 
-        if emulate_map_input_file:
-            # uses dataframes, which don't seem to work in inline mode:
-            #
-            # java.util.ArrayList cannot be cast to org.apache.spark.sql.Column
-            harness_job_runner_alias = 'local'
-        else:
-            harness_job_runner_alias = 'inline'
-
+        harness_job_runner_alias = 'local' if emulate_map_input_file else 'inline'
         harness_job = self._harness_job(
             job_class, input_bytes=input_bytes,
             input_paths=input_paths,
@@ -350,7 +342,7 @@ class SparkHarnessOutputComparisonTestCase(
             MRWordFreqCountFailingCombiner, input_bytes=input_bytes)
 
         with job.make_runner() as runner, \
-                self.assertRaises(Exception) as assert_raises_context:
+                    self.assertRaises(Exception) as assert_raises_context:
             runner.run()
 
         exception_text = assert_raises_context.exception.__str__()
@@ -390,10 +382,7 @@ class SparkHarnessOutputComparisonTestCase(
 
         with job.make_runner() as runner:
             runner.run()
-            self.assertEqual(
-                dict(job.parse_output(runner.cat_output())),
-                dict(),
-            )
+            self.assertEqual(dict(job.parse_output(runner.cat_output())), {})
 
     def test_combiner_that_sometimes_yields_zero_values(self):
         # another test that the combiner actually runs
@@ -465,16 +454,20 @@ class SparkHarnessOutputComparisonTestCase(
 
         with self.create_temp_counter_dir() as output_counter_dir:
             harness_job = self._harness_job(
-                MRCountingJob, input_bytes=input_bytes,
-                counter_output_dir='file://{}'.format(output_counter_dir)
+                MRCountingJob,
+                input_bytes=input_bytes,
+                counter_output_dir=f'file://{output_counter_dir}',
             )
+
             with harness_job.make_runner() as runner:
                 runner.run()
 
                 harness_counters = json.loads(
                     self.spark_context.textFile(
-                        'file://' + output_counter_dir
-                    ).collect()[0])
+                        f'file://{output_counter_dir}'
+                    ).collect()[0]
+                )
+
 
         self.assertEqual(harness_counters, reference_counters)
 
@@ -489,9 +482,11 @@ class SparkHarnessOutputComparisonTestCase(
 
         with self.create_temp_counter_dir() as output_counter_dir:
             harness_job = self._harness_job(
-                MRCountingJob, input_bytes=input_bytes,
-                counter_output_dir='{}'.format(output_counter_dir)
+                MRCountingJob,
+                input_bytes=input_bytes,
+                counter_output_dir=f'{output_counter_dir}',
             )
+
             with harness_job.make_runner() as runner:
                 runner.run()
                 path = join(output_counter_dir, "part-00000")

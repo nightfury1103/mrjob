@@ -16,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for DataprocJobRunner"""
+
 import getpass
 import os
 import os.path
@@ -137,8 +138,7 @@ LOG4J_WARNINGS = (
 
 SPLIT_URI = ('gs://mrjob-us-west1-aaaaaaaaaaaaaaaa/tmp/mr_boom'
              '.davidmarin.20180503.232439.647629/files/LICENSE.txt')
-SPLIT_MESSAGE = (
-    'Processing split: %s:0+28' % SPLIT_URI)
+SPLIT_MESSAGE = f'Processing split: {SPLIT_URI}:0+28'
 SPLIT = dict(path=SPLIT_URI, start_line=0, num_lines=28)
 
 LOGGING_CLUSTER_NAME = 'mock-cluster-with-logging'
@@ -483,7 +483,9 @@ class GCEClusterConfigTestCase(MockGoogleTestCase):
         scope2 = 'https://www.googleapis.com/auth/scope2'
 
         gcc = self._get_gce_cluster_config(
-            '--service-account-scopes', '%s,%s' % (scope1, scope2))
+            '--service-account-scopes', f'{scope1},{scope2}'
+        )
+
 
         self.assertEqual(
             set(gcc.service_account_scopes),
@@ -767,8 +769,7 @@ class InstanceTypeAndNumberTestCase(MockGoogleTestCase):
         role_to_expected = kwargs.copy()
         role_to_expected.setdefault('master', (1, DEFAULT_GCE_INSTANCE))
         role_to_expected.setdefault('core', (2, DEFAULT_GCE_INSTANCE))
-        role_to_expected.setdefault(
-            'task', self._gce_instance_group_summary(dict()))
+        role_to_expected.setdefault('task', self._gce_instance_group_summary({}))
         self.assertEqual(role_to_actual, role_to_expected)
 
     def set_in_mrjob_conf(self, **kwargs):
@@ -1013,16 +1014,17 @@ class MasterBootstrapScriptTestCase(MockGoogleTestCase):
         runner = DataprocJobRunner(
             conf_paths=[],
             bootstrap=[
-                PYTHON_BIN + ' ' +
-                foo_py_path + '#bar.py',
+                f'{PYTHON_BIN} {foo_py_path}#bar.py',
                 'gs://walrus/scripts/ohnoes.sh#',
                 'echo "Hi!"',
                 'true',
                 'ls',
                 'speedups.sh',
-                '/tmp/s.sh'
+                '/tmp/s.sh',
             ],
-            bootstrap_mrjob=True)
+            bootstrap_mrjob=True,
+        )
+
 
         runner._add_bootstrap_files_for_upload()
 
@@ -1041,12 +1043,8 @@ class MasterBootstrapScriptTestCase(MockGoogleTestCase):
             uri = runner._upload_mgr.uri(path)
             name = runner._bootstrap_dir_mgr.name('file', path, name=name)
 
-            self.assertIn(
-                '  hadoop fs -copyToLocal %s $__mrjob_PWD/%s' % (uri, name),
-                lines)
-            self.assertIn(
-                '  chmod u+rx $__mrjob_PWD/%s' % (name,),
-                lines)
+            self.assertIn(f'  hadoop fs -copyToLocal {uri} $__mrjob_PWD/{name}', lines)
+            self.assertIn(f'  chmod u+rx $__mrjob_PWD/{name}', lines)
 
         # check files get downloaded
         assertScriptDownloads(foo_py_path, 'bar.py')
@@ -1060,7 +1058,7 @@ class MasterBootstrapScriptTestCase(MockGoogleTestCase):
         self.assertIn('mkdir /tmp/mrjob', lines)
         self.assertIn('cd /tmp/mrjob', lines)
 
-        self.assertIn('  ' + PYTHON_BIN + ' $__mrjob_PWD/bar.py', lines)
+        self.assertIn(f'  {PYTHON_BIN} $__mrjob_PWD/bar.py', lines)
         self.assertIn('  $__mrjob_PWD/ohnoes.sh', lines)
 
         self.assertIn('  echo "Hi!"', lines)
@@ -1332,13 +1330,13 @@ class GetNewDriverOutputLinesTestCase(MockGoogleTestCase):
         self.assertEqual(self.get_new_lines(), [])
 
     def test_empty_log_file(self):
-        log_uri = DRIVER_OUTPUT_URI + '.000000000'
+        log_uri = f'{DRIVER_OUTPUT_URI}.000000000'
         self.append_data(log_uri, b'')
 
         self.assertEqual(self.get_new_lines(), [])
 
     def test_return_new_lines_as_available(self):
-        log_uri = DRIVER_OUTPUT_URI + '.000000000'
+        log_uri = f'{DRIVER_OUTPUT_URI}.000000000'
 
         self.assertEqual(self.get_new_lines(), [])
 
@@ -1356,7 +1354,7 @@ class GetNewDriverOutputLinesTestCase(MockGoogleTestCase):
     def test_partial_lines(self):
         # probably lines are going to be added atomically, but just in case
 
-        log_uri = DRIVER_OUTPUT_URI + '.000000000'
+        log_uri = f'{DRIVER_OUTPUT_URI}.000000000'
 
         self.assertEqual(self.get_new_lines(), [])
 
@@ -1373,8 +1371,8 @@ class GetNewDriverOutputLinesTestCase(MockGoogleTestCase):
         self.append_data(log_uri, b'd log line\n')
 
     def test_iterating_through_log_files(self):
-        log0_uri = DRIVER_OUTPUT_URI + '.000000000'
-        log1_uri = DRIVER_OUTPUT_URI + '.000000001'
+        log0_uri = f'{DRIVER_OUTPUT_URI}.000000000'
+        log1_uri = f'{DRIVER_OUTPUT_URI}.000000001'
 
         self.assertEqual(self.get_new_lines(), [])
 
@@ -1395,7 +1393,7 @@ class GetNewDriverOutputLinesTestCase(MockGoogleTestCase):
         self.assertEqual(self.get_new_lines(), [])
 
     def test_not_found(self):
-        log_uri = DRIVER_OUTPUT_URI + '.000000000'
+        log_uri = f'{DRIVER_OUTPUT_URI}.000000000'
         self.append_data(log_uri, b'log line\nanother log line\n')
 
         # in some cases the blob for the log file appears but
@@ -1408,7 +1406,7 @@ class GetNewDriverOutputLinesTestCase(MockGoogleTestCase):
         self.assertEqual(self.get_new_lines(), [])
 
     def test_request_range_not_satisfiable(self):
-        log_uri = DRIVER_OUTPUT_URI + '.000000000'
+        log_uri = f'{DRIVER_OUTPUT_URI}.000000000'
         self.append_data(log_uri, b'')
 
         # this is normal and happens when we request a range starting
@@ -1718,7 +1716,7 @@ class MockLogEntriesTestCase(MockGoogleTestCase):
         )
 
     def log_name(self, name):
-        return 'projects/%s/logs/%s' % (self.mock_project_id, name)
+        return f'projects/{self.mock_project_id}/logs/{name}'
 
     def log_resource(self):
         return dict(
@@ -1953,17 +1951,18 @@ class CauseOfErrorTestCase(MockLogEntriesTestCase):
         job = MRBoom(['-r', 'dataproc', '--cluster-id', LOGGING_CLUSTER_NAME])
         job.sandbox()
 
-        self.mock_jobs_succeed = False
-
         # feed application_id into mock driver output
         self.get_lines.side_effect = [
-            ['15/12/11 13:32:45 INFO impl.YarnClientImpl:'
-             ' Submitted application %s' % APPLICATION_ID],
+            [
+                f'15/12/11 13:32:45 INFO impl.YarnClientImpl: Submitted application {APPLICATION_ID}'
+            ],
             [],
             [],
             [],
         ]
 
+
+        self.mock_jobs_succeed = False
         self.add_container_exit(CONTAINER_ID_1)
         self.add_split(CONTAINER_ID_1)
         self.add_stack_trace(CONTAINER_ID_1)
@@ -1997,17 +1996,18 @@ class CauseOfErrorTestCase(MockLogEntriesTestCase):
                       '--no-read-logs'])
         job.sandbox()
 
-        self.mock_jobs_succeed = False
-
         # feed application_id into mock driver output
         self.get_lines.side_effect = [
-            ['15/12/11 13:32:45 INFO impl.YarnClientImpl:'
-             ' Submitted application %s' % APPLICATION_ID],
+            [
+                f'15/12/11 13:32:45 INFO impl.YarnClientImpl: Submitted application {APPLICATION_ID}'
+            ],
             [],
             [],
             [],
         ]
 
+
+        self.mock_jobs_succeed = False
         self.add_container_exit(CONTAINER_ID_1)
         self.add_split(CONTAINER_ID_1)
         self.add_stack_trace(CONTAINER_ID_1)

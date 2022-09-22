@@ -30,10 +30,13 @@ class MRGrepJob(MRJob):
 
     def mapper_cmd(self):
         # grep will return exit status 1 if no matching lines are found
-        return cmd_line([
-            'sh', '-c',
-            'grep -e %s || RC=$?; if [ $RC -ne 1 ]; then (exit $RC); fi' % (
-                cmd_line([self.options.expression]))])
+        return cmd_line(
+            [
+                'sh',
+                '-c',
+                f'grep -e {cmd_line([self.options.expression])} || RC=$?; if [ $RC -ne 1 ]; then (exit $RC); fi',
+            ]
+        )
 
 
 if __name__ == '__main__':

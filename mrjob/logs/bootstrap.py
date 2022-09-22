@@ -56,9 +56,7 @@ def _check_for_nonzero_return_code(reason):
     If it is, return a dictionary with the keys action_num (0-indexed
     bootstrap action number) and node_id (a string). Otherwise return None.
     """
-    m = _BOOTSTRAP_NONZERO_RETURN_CODE_RE.match(reason)
-
-    if m:
+    if m := _BOOTSTRAP_NONZERO_RETURN_CODE_RE.match(reason):
         return _extract_action_num_and_node_id(m)
     else:
         return None
@@ -93,10 +91,7 @@ def _match_emr_bootstrap_stderr_path(path, node_id=None, action_num=None):
     if action_num is not None and action_num != result['action_num']:
         return None
 
-    if node_id is not None and node_id != result['node_id']:
-        return None
-
-    return result
+    return None if node_id is not None and node_id != result['node_id'] else result
 
 
 # This strategy assumes we can ask the EMR API which node(s) the error
@@ -122,8 +117,7 @@ def _interpret_emr_bootstrap_stderr(fs, matches, partial=True):
     for match in matches:
         stderr_path = match['path']
 
-        task_error = _parse_task_stderr(_cat_log_lines(fs, stderr_path))
-        if task_error:
+        if task_error := _parse_task_stderr(_cat_log_lines(fs, stderr_path)):
             task_error = dict(task_error)  # make a copy
             task_error['path'] = stderr_path
             error = dict(

@@ -91,10 +91,7 @@ def _id_part(id, i):
     or too short, return ''"""
     parts = (id or '').split('_')
 
-    if i >= len(parts):
-        return ''
-    else:
-        return parts[i]
+    return '' if i >= len(parts) else parts[i]
 
 
 def _any_id(d):

@@ -29,18 +29,16 @@ def _pick_error(log_interpretation):
     """
     errors = _extract_errors(log_interpretation)
 
-    # no point in merging spark errors, which may not be tied to a container
-    # because they're not even necessarily on Hadoop
-    spark_errors = _pick_spark_errors(errors)
-    if spark_errors:
+    if spark_errors := _pick_spark_errors(errors):
         return spark_errors[0]
 
     # otherwise, merge hadoop/task errors and pick the most recent one
     attempt_to_container_id = log_interpretation.get('history', {}).get(
         'attempt_to_container_id', {})
 
-    merged_errors = _merge_and_sort_errors(errors, attempt_to_container_id)
-    if merged_errors:
+    if merged_errors := _merge_and_sort_errors(
+        errors, attempt_to_container_id
+    ):
         return merged_errors[0]
 
     return None
@@ -153,8 +151,7 @@ def _format_error_helper(error):
     """Return string to log/print explaining the given error."""
     result = ''
 
-    spark_error = error.get('spark_error')
-    if spark_error:
+    if spark_error := error.get('spark_error'):
         spark_error = _trim_spark_error(spark_error)
 
         result += spark_error.get('message', '')
@@ -162,9 +159,6 @@ def _format_error_helper(error):
         if spark_error.get('path'):
             result += '\n\n(from %s)' % _describe_source(spark_error)
 
-        # spark errors typically include both java and Python stacktraces,
-        # so it's not helpful to print hadoop/task errors (and there probably
-        # wouldn't be any)
     else:
         hadoop_error = error.get('hadoop_error')
         if hadoop_error:
@@ -173,11 +167,7 @@ def _format_error_helper(error):
             if hadoop_error.get('path'):
                 result += '\n\n(from %s)' % _describe_source(hadoop_error)
 
-        # for practical purposes, there's always a Java error with a message,
-        # so don't worry too much about spacing.
-
-        task_error = error.get('task_error')
-        if task_error:
+        if task_error := error.get('task_error'):
             if hadoop_error:
                 result += '\n\ncaused by:\n\n%s' % (
                     task_error.get('message', ''))
@@ -199,14 +189,13 @@ def _describe_source(d):
     """
     path = d.get('path') or ''
 
-    if 'num_lines' in d and 'start_line' in d:
-        if d['num_lines'] == 1:
-            return 'line %d of %s' % (d['start_line'] + 1, path)
-        else:
-            return 'lines %d-%d of %s' % (
-                d['start_line'] + 1, d['start_line'] + d['num_lines'], path)
-    else:
+    if 'num_lines' not in d or 'start_line' not in d:
         return path
+    if d['num_lines'] == 1:
+        return 'line %d of %s' % (d['start_line'] + 1, path)
+    else:
+        return 'lines %d-%d of %s' % (
+            d['start_line'] + 1, d['start_line'] + d['num_lines'], path)
 
 
 def _trim_spark_error(spark_error):

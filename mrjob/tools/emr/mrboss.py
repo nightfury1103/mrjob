@@ -115,11 +115,8 @@ def _run_on_all_nodes(runner, output_dir, cmd_args, print_stderr=True):
     master_addr = runner._address_of_master()
     addresses = [master_addr]
 
-    worker_addrs = runner._ssh_worker_hosts()
-
-    if worker_addrs:
-        addresses += ['%s!%s' % (master_addr, worker_addr)
-                      for worker_addr in worker_addrs]
+    if worker_addrs := runner._ssh_worker_hosts():
+        addresses += [f'{master_addr}!{worker_addr}' for worker_addr in worker_addrs]
 
     for addr in addresses:
 
@@ -127,7 +124,7 @@ def _run_on_all_nodes(runner, output_dir, cmd_args, print_stderr=True):
 
         if print_stderr:
             print('---')
-            print('Command completed on %s.' % addr)
+            print(f'Command completed on {addr}.')
             print(to_unicode(stderr), end=' ')
 
         if '!' in addr:

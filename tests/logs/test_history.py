@@ -171,8 +171,10 @@ class InterpretHistoryLogTestCase(BasicTestCase):
         self.mock_parse_yarn_history_log.return_value = dict(
             errors=[
                 dict(attempt_id='attempt_1449525218032_0005_m_000000_0'),
-                dict(hadoop_error=dict()),
-            ])
+                dict(hadoop_error={}),
+            ]
+        )
+
 
         self.assertEqual(
             self.interpret_history_log(

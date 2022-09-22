@@ -177,8 +177,9 @@ class SandboxedTestCase(EmptyMrjobConfTestCase):
         (Merely using the local runner won't require this, because it
         bootstraps mrjob by default.)
         """
-        os.environ['PYTHONPATH'] = (
-            mrjob_pythonpath() + ':' + os.environ.get('PYTHONPATH', ''))
+        os.environ['PYTHONPATH'] = f'{mrjob_pythonpath()}:' + os.environ.get(
+            'PYTHONPATH', ''
+        )
 
 
 @skipIf(pyspark is None, 'no pyspark module')

@@ -150,8 +150,7 @@ def get_mock_hadoop_output():
     """
     output_dir = get_mock_dir('output')
 
-    dirnames = sorted(os.listdir(output_dir))
-    if dirnames:
+    if dirnames := sorted(os.listdir(output_dir)):
         return os.path.join(output_dir, dirnames[0])
     else:
         return None
@@ -160,7 +159,7 @@ def get_mock_hadoop_output():
 def add_mock_hadoop_counters(counters):
     """Add counters for a subsequent run of the hadoop jar command (streaming
     or otherwise), as a map from group name to counter name to amount."""
-    counter_path = os.path.join(get_mock_dir('counters'), iso_now() + '.json')
+    counter_path = os.path.join(get_mock_dir('counters'), f'{iso_now()}.json')
 
     with open(counter_path, 'w') as f:
         json.dump(counters, f)
@@ -172,9 +171,7 @@ def next_mock_hadoop_counters():
     If no counters available, return {}
     """
     counters_dir = get_mock_dir('counters')
-    filenames = sorted(os.listdir(counters_dir))
-
-    if filenames:
+    if filenames := sorted(os.listdir(counters_dir)):
         counters_path = os.path.join(counters_dir, filenames[0])
         try:
             with open(counters_path) as f:
@@ -215,7 +212,7 @@ def hdfs_uri_to_real_path(hdfs_uri, environ):
     path = components.path
 
     if not scheme and not path.startswith('/'):
-        path = '/user/%s/%s' % (environ['USER'], path)
+        path = f"/user/{environ['USER']}/{path}"
 
     return os.path.join(get_mock_hdfs_root(environ=environ), path.lstrip('/'))
 
@@ -225,12 +222,12 @@ def real_path_to_hdfs_uri(real_path, environ):
     hdfs_root = get_mock_hdfs_root(environ=environ)
 
     if not real_path.startswith(hdfs_root):
-        raise ValueError('path %s is not in %s' % (real_path, hdfs_root))
+        raise ValueError(f'path {real_path} is not in {hdfs_root}')
 
     # for some reason, relpath() doesn't work here
     hdfs_uri = real_path[len(hdfs_root):]
     if not hdfs_uri.startswith('/'):
-        hdfs_uri = '/' + hdfs_uri
+        hdfs_uri = f'/{hdfs_uri}'
 
     return hdfs_uri
 
@@ -247,9 +244,8 @@ def invoke_cmd(stdout, stderr, environ, prefix, cmd, cmd_args, error_msg,
 
     if func_name in globals():
         return globals()[func_name](stdout, stderr, environ, *cmd_args)
-    else:
-        stderr.write(error_msg)
-        return -1
+    stderr.write(error_msg)
+    return -1
 
 
 def main(stdin, stdout, stderr, argv, environ):
@@ -275,7 +271,7 @@ def main(stdin, stdout, stderr, argv, environ):
 
 def hadoop_fs(stdout, stderr, environ, *args):
     """Implements hadoop fs <args>"""
-    if len(args) < 1:
+    if not args:
         print('Usage: java FsShell', file=stderr)
         return -1
 
@@ -290,18 +286,14 @@ def hadoop_fs(stdout, stderr, environ, *args):
 
 def hadoop_fs_cat(stdout, stderr, environ, *args):
     """Implements hadoop fs -cat <src>"""
-    if len(args) < 1:
+    if not args:
         print('Usage: java FsShell [-cat <src>]', file=stderr)
         return -1
 
     failed = False
     for hdfs_uri_glob in args:
         real_path_glob = hdfs_uri_to_real_path(hdfs_uri_glob, environ)
-        paths = glob.glob(real_path_glob)
-        if not paths:
-            print('cat: File does not exist: %s' % hdfs_uri_glob, file=stderr)
-            failed = True
-        else:
+        if paths := glob.glob(real_path_glob):
             for path in paths:
                 with open(path, 'rb') as f:
                     # use binary interface if available
@@ -309,10 +301,10 @@ def hadoop_fs_cat(stdout, stderr, environ, *args):
                     for line in f:
                         stdout_buffer.write(line)
 
-    if failed:
-        return -1
-    else:
-        return 0
+        else:
+            print(f'cat: File does not exist: {hdfs_uri_glob}', file=stderr)
+            failed = True
+    return -1 if failed else 0
 
 
 def hadoop_fs_du(stdout, stderr, environ, *args):
@@ -353,8 +345,7 @@ def _hadoop_fs_du(cmd_name, stdout, stderr, environ, path_args,
                 msg = "%s: `%s': No such file or directory" % (
                     cmd_name, hdfs_uri_glob)
             else:
-                msg = '%s: Cannot access %s: No such file or directory.' % (
-                    cmd_name, hdfs_uri_glob)
+                msg = f'{cmd_name}: Cannot access {hdfs_uri_glob}: No such file or directory.'
             print(msg, file=stderr)
 
             failed = True
@@ -382,10 +373,7 @@ def _hadoop_fs_du(cmd_name, stdout, stderr, environ, path_args,
                     print('%d  %s' % (size, hdfs_uri), file=stdout)
 
     if failed:
-        if mock_hadoop_uses_yarn(environ):
-            return 1  # -1 is only for arg-parsing errors
-        else:
-            return -1
+        return 1 if mock_hadoop_uses_yarn(environ) else -1
     else:
         return 0
 
@@ -413,27 +401,16 @@ def _hadoop_ls_line(real_path, scheme, netloc, size=0, max_size=0, environ={}):
 
     # we could actually implement ls here, but mrjob only cares about
     # the path
-    if os.path.isdir(real_path):
-        file_type = 'd'
-    else:
-        file_type = '-'
-
-    if scheme in ('s3', 's3n', 's3a'):
-        # no user and group on S3 (see Pull Request #573)
-        user_and_group = ''
-    else:
-        user_and_group = 'dave supergroup'
-
+    file_type = 'd' if os.path.isdir(real_path) else '-'
+    user_and_group = '' if scheme in ('s3', 's3n', 's3a') else 'dave supergroup'
     # newer Hadoop returns fully qualified URIs (see Pull Request #577)
     if scheme and mock_hadoop_uses_yarn(environ):
-        hdfs_uri = '%s://%s%s' % (scheme, netloc, hdfs_uri)
+        hdfs_uri = f'{scheme}://{netloc}{hdfs_uri}'
 
     # figure out the padding
     size = str(size).rjust(len(str(max_size)))
 
-    return (
-        '%srwxrwxrwx - %s %s 2010-10-01 15:16 %s' %
-        (file_type, user_and_group, size, hdfs_uri))
+    return f'{file_type}rwxrwxrwx - {user_and_group} {size} 2010-10-01 15:16 {hdfs_uri}'
 
 
 def hadoop_fs_ls(stdout, stderr, environ, *args):
@@ -474,8 +451,11 @@ def _hadoop_fs_ls(cmd_name, stdout, stderr, environ, path_args, recursive):
         paths = []
 
         if not real_paths:
-            print('%s: Cannot access %s: No such file or directory.' %
-                  (cmd_name, hdfs_uri_glob), file=stderr)
+            print(
+                f'{cmd_name}: Cannot access {hdfs_uri_glob}: No such file or directory.',
+                file=stderr,
+            )
+
             failed = True
         else:
             for real_path in real_paths:
@@ -490,10 +470,7 @@ def _hadoop_fs_ls(cmd_name, stdout, stderr, environ, path_args, recursive):
                     else:
                         for filename in os.listdir(real_path):
                             path = os.path.join(real_path, filename)
-                            if os.path.isdir(path):
-                                size = 0
-                            else:
-                                size = os.path.getsize(path)
+                            size = 0 if os.path.isdir(path) else os.path.getsize(path)
                             paths.append((path, scheme, netloc, size))
                 else:
                     size = os.path.getsize(real_path)
@@ -506,15 +483,12 @@ def _hadoop_fs_ls(cmd_name, stdout, stderr, environ, path_args, recursive):
                 print(_hadoop_ls_line(*path + (max_size, environ)),
                       file=stdout)
 
-    if failed:
-        return -1
-    else:
-        return 0
+    return -1 if failed else 0
 
 
 def hadoop_fs_mkdir(stdout, stderr, environ, *args):
     """Implements hadoop fs -mkdir"""
-    if len(args) < 1:
+    if not args:
         print('Usage: java FsShell [-mkdir <path>]', file=stderr)
         return -1
 
@@ -530,17 +504,13 @@ def hadoop_fs_mkdir(stdout, stderr, environ, *args):
     for path in args:
         real_path = hdfs_uri_to_real_path(path, environ)
         if os.path.exists(real_path):
-            print('mkdir: cannot create directory %s: File exists' % path,
-                  file=stderr)
+            print(f'mkdir: cannot create directory {path}: File exists', file=stderr)
             # continue to make directories on failure
             failed = True
         else:
             os.makedirs(real_path)
 
-    if failed:
-        return -1
-    else:
-        return 0
+    return -1 if failed else 0
 
 
 def hadoop_fs_put(stdout, stderr, environ, *args):
@@ -582,7 +552,7 @@ def hadoop_fs_rm(stdout, stderr, environ, *args):
         elif arg.startswith('-'):
             # don't know what the pre-YARN version of this, doesn't matter
             # It's really '-rm', not 'rm'. Because it's about args?
-            print('-rm: Illegal option %s' % arg, file=stderr)
+            print(f'-rm: Illegal option {arg}', file=stderr)
             return -1
         else:
             # BSD-style args: all switches at the beginning
@@ -611,11 +581,7 @@ def hadoop_fs_rmr(stdout, stderr, environ, *args):
     if yarn:
         print("rmr: DEPRECATED: Please use 'rm -r' instead.", file=stderr)
 
-    if args and args[0] == '-skipTrash':
-        path_args = args[1:]
-    else:
-        path_args = args
-
+    path_args = args[1:] if args and args[0] == '-skipTrash' else args
     if not path_args:
         if yarn:
             print('-rmr: Not enough arguments: expected 1 but got 0',
@@ -640,10 +606,9 @@ def _hadoop_fs_rm(cmd_name, stdout, stderr, environ,
 
     def fail(path, msg):
         if mock_hadoop_uses_yarn(environ):
-            print('%s `%s`: %s' % (cmd_name, path, msg), file=stderr)
+            print(f'{cmd_name} `{path}`: {msg}', file=stderr)
         else:
-            print('%s: cannot remove %s: %s.' % (cmd_name, path, msg),
-                  file=stderr)
+            print(f'{cmd_name}: cannot remove {path}: {msg}.', file=stderr)
         failed.append(True)
 
     for path in path_args:
@@ -659,26 +624,20 @@ def _hadoop_fs_rm(cmd_name, stdout, stderr, environ,
             if not force:
                 fail(path, 'No such file or directory')
 
-    if failed:
-        return -1
-    else:
-        return 0
+    return -1 if failed else 0
 
 
 def hadoop_fs_test(stdout, stderr, environ, *args):
     """Implements hadoop fs -test."""
-    if len(args) < 1:
+    if not args:
         print('Usage: java FsShell [-test -[ezd] <src>]', file=stderr)
 
-    if os.path.exists(hdfs_uri_to_real_path(args[1], environ)):
-        return 0
-    else:
-        return 1
+    return 0 if os.path.exists(hdfs_uri_to_real_path(args[1], environ)) else 1
 
 
 def hadoop_fs_touchz(stdout, stderr, environ, *args):
     """Implements hadoop fs -touchz'"""
-    if len(args) < 1:
+    if not args:
         print('Usage: hadoop fs [generic options] -touchz <path> ...]',
               file=stderr)
         return -1
@@ -689,10 +648,9 @@ def hadoop_fs_touchz(stdout, stderr, environ, *args):
     if os.path.exists(path):
         if os.path.getsize(path) == 0:
             return 0
-        else:
-            print(
-                "touchz: `%s': Not a zero-length file" % uri, file=stderr)
-            return 1
+        print(
+            "touchz: `%s': Not a zero-length file" % uri, file=stderr)
+        return 1
     else:
         if os.path.exists(os.path.dirname(path)):
             with open(path, 'w'):
@@ -706,7 +664,7 @@ def hadoop_fs_touchz(stdout, stderr, environ, *args):
 
 
 def hadoop_jar(stdout, stderr, environ, *args):
-    if len(args) < 1:
+    if not args:
         print('RunJar jarFile [mainClass] args...', file=stderr)
         return -1
 
@@ -719,8 +677,7 @@ def hadoop_jar(stdout, stderr, environ, *args):
     # use this to simulate log4j
     def mock_log4j(message, level='INFO', logger='mapreduce.JOB', now=None):
         now = now or datetime.datetime.now()
-        line = '%s %s %s: %s' % (now.strftime('%Y/%m/%d %H:%M:%S'),
-                                 level, logger, message)
+        line = f"{now.strftime('%Y/%m/%d %H:%M:%S')} {level} {logger}: {message}"
         print(line, file=stderr)
 
     # simulate counters

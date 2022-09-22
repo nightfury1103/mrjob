@@ -43,9 +43,7 @@ from tests.sandbox import random_seed
 class ToLinesTestCase(BasicTestCase):
 
     def test_empty(self):
-        self.assertEqual(
-            list(to_lines(_ for _ in ())),
-            [])
+        self.assertEqual(list(to_lines(iter(()))), [])
 
     def test_buffered_lines(self):
         self.assertEqual(
@@ -138,11 +136,7 @@ class SafeEvalTestCase(BasicTestCase):
         # ranges have different reprs on Python 2 vs. Python 3, and
         # can't be checked for equality until Python 3.3+
 
-        if PY2:
-            range_type = xrange
-        else:
-            range_type = range
-
+        range_type = xrange if PY2 else range
         self.assertEqual(repr(safeeval(repr(range_type(3)))),
                          repr(range_type(3)))
 
@@ -219,7 +213,7 @@ class ArchiveTestCase(BasicTestCase):
         join = os.path.join
 
         # archive it up
-        archive_name = 'a.' + extension
+        archive_name = f'a.{extension}'
         variables = dict(archive_name=join('..', archive_name),
                          files_to_archive='.')
         archive_command = [arg % variables for arg in archive_template]
@@ -231,7 +225,7 @@ class ArchiveTestCase(BasicTestCase):
                          stdout=PIPE, stderr=PIPE)
         except OSError as e:
             if e.errno == 2:
-                self.skipTest("No %s command" % archive_command[0])
+                self.skipTest(f"No {archive_command[0]} command")
             else:
                 raise
         proc.communicate()  # discard output

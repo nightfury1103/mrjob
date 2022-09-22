@@ -301,10 +301,16 @@ class InlineRunnerSparkTestCase(SandboxedTestCase, SingleSparkContextTestCase):
 
         # --use-driver-cwd gets around issues with the shared JVM not changing
         # executors' working directory to match the driver on local master
-        job = MRSparkOSWalk(['-r', 'inline',
-                             '--use-driver-cwd',
-                             '--files',
-                             '%s#ghoti,%s' % (fish_path, fowl_path)])
+        job = MRSparkOSWalk(
+            [
+                '-r',
+                'inline',
+                '--use-driver-cwd',
+                '--files',
+                f'{fish_path}#ghoti,{fowl_path}',
+            ]
+        )
+
         job.sandbox()
 
         file_sizes = {}

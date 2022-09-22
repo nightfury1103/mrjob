@@ -147,7 +147,7 @@ def _match_emr_step_log_path(path, log_type, step_id=None):
     if m.group('log_type') != log_type:
         return None
 
-    if not (step_id is None or m.group('step_id') == step_id):
+    if step_id is not None and m.group('step_id') != step_id:
         return None
 
     return dict(step_id=m.group('step_id'), timestamp=m.group('timestamp'))
@@ -165,7 +165,7 @@ def _interpret_emr_step_syslog(fs, matches):
 
         interpretation = _parse_step_syslog(_cat_log_lines(fs, path))
 
-        result.update(interpretation)
+        result |= interpretation
         for error in result.get('errors') or ():
             if 'hadoop_error' in error:
                 error['hadoop_error']['path'] = path
@@ -194,9 +194,7 @@ def _interpret_emr_step_stderr(fs, matches):
     for match in matches:
         path = match['path']
 
-        error = _parse_task_stderr(_cat_log_lines(fs, path))
-
-        if error:
+        if error := _parse_task_stderr(_cat_log_lines(fs, path)):
             error['path'] = path
             # We're essentially just tailing the stderr log, so stop when we
             # find an error.
@@ -209,8 +207,7 @@ def _eio_to_eof(pty_master):
     """Yield lines from a PTY, gracefully handling an ``IOError`` with
     ``errno == EIO`` as end-of-file."""
     try:
-        for line in pty_master:
-            yield line
+        yield from pty_master
     except IOError as e:
         # this is just the PTY's way of saying goodbye
         if e.errno == errno.EIO:
@@ -279,11 +276,7 @@ def _parse_step_syslog_from_log4j_records(records, step_interpretation=None):
     This powers :py:func:`_parse_step_syslog` and
     :py:func:`_interpret_hadoop_jar_command_stderr`.
     """
-    if step_interpretation is None:
-        result = {}
-    else:
-        result = step_interpretation
-
+    result = {} if step_interpretation is None else step_interpretation
     for record in records:
         message = record['message']
 
@@ -293,36 +286,26 @@ def _parse_step_syslog_from_log4j_records(records, step_interpretation=None):
                 message.splitlines())
             continue
 
-        # output_dir
-        m = _OUTPUT_DIRECTORY_RE.match(message)
-        if m:
+        if m := _OUTPUT_DIRECTORY_RE.match(message):
             result['output_dir'] = m.group('output_dir')
             continue
 
-        # application_id
-        m = _SUBMITTED_APPLICATION_RE.match(message)
-        if m:
+        if m := _SUBMITTED_APPLICATION_RE.match(message):
             result['application_id'] = m.group('application_id')
             continue
 
-        # job_id
-        m = _RUNNING_JOB_RE.match(message)
-        if m:
+        if m := _RUNNING_JOB_RE.match(message):
             result['job_id'] = m.group('job_id')
             continue
 
-        # progress
-        m = _JOB_PROGRESS_RE.match(message)
-        if m:
+        if m := _JOB_PROGRESS_RE.match(message):
             result['progress'] = dict(
                 map=int(m.group('map')),
                 reduce=int(m.group('reduce')),
                 message=message,
             )
 
-        # invalid jar
-        m = _NOT_A_VALID_JAR_RE.match(message)
-        if m:
+        if m := _NOT_A_VALID_JAR_RE.match(message):
             error = dict(
                 hadoop_error=dict(
                     message=message,
@@ -333,9 +316,7 @@ def _parse_step_syslog_from_log4j_records(records, step_interpretation=None):
             result.setdefault('errors', [])
             result['errors'].append(error)
 
-        # task failure
-        m = _TASK_ATTEMPT_FAILED_RE.match(message)
-        if m:
+        if m := _TASK_ATTEMPT_FAILED_RE.match(message):
             error_str = '\n'.join(message.splitlines()[1:])
             if not error_str:  # if no exception, print something
                 error_str = message
@@ -376,7 +357,7 @@ def _parse_indented_counters(lines):
     group_indent = None
 
     for line in lines:
-        if not (group is None or group_indent is None):
+        if group is not None and group_indent is not None:
             m = _INDENTED_COUNTER_RE.match(line)
             if m and len(m.group('indent')) > group_indent:
 
@@ -388,13 +369,12 @@ def _parse_indented_counters(lines):
 
                 continue
 
-        m = _INDENTED_COUNTER_GROUP_RE.match(line)
-        if m:
+        if m := _INDENTED_COUNTER_GROUP_RE.match(line):
             group = m.group('group')
             group_indent = len(m.group('indent'))
 
         elif not _INDENTED_COUNTERS_MESSAGE_RE.match(line):
-            log.warning('unexpected counter line: %s' % line)
+            log.warning(f'unexpected counter line: {line}')
 
     return counters
 
@@ -404,7 +384,7 @@ def _log_line_from_driver(line, level=None):
 
     Optionally specify a logging level (default is logging.INFO).
     """
-    log.log(level or logging.INFO, '  %s' % line)
+    log.log(level or logging.INFO, f'  {line}')
 
 
 def _log_log4j_record(record):

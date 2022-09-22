@@ -138,10 +138,10 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
             opts, source=source)
 
         # cloud_part_size_mb should be a number
-        if opts.get('cloud_part_size_mb') is not None:
-            if not isinstance(opts['cloud_part_size_mb'],
-                              (integer_types, float)):
-                raise TypeError('cloud_part_size_mb must be a number')
+        if opts.get('cloud_part_size_mb') is not None and not isinstance(
+            opts['cloud_part_size_mb'], (integer_types, float)
+        ):
+            raise TypeError('cloud_part_size_mb must be a number')
 
         return opts
 
@@ -226,7 +226,7 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
             return
 
         path = os.path.join(self._get_local_tmp_dir(), 'b.sh')
-        log.info('writing master bootstrap script to %s' % path)
+        log.info(f'writing master bootstrap script to {path}')
 
         contents = self._master_bootstrap_script_content(
             self._bootstrap)
@@ -250,24 +250,19 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
             out.extend(self._bootstrap_pre_commands())
             out.append('')
 
-        # store $PWD
-        out.append('# store $PWD')
-        out.append('__mrjob_PWD=$PWD')
-        out.append('')
-
-        # special case for PWD being in /, which happens on Dataproc
-        # (really we should cd to tmp or something)
-        out.append('if [ $__mrjob_PWD = "/" ]; then')
-        out.append('  __mrjob_PWD=""')
-        out.append('fi')
-        out.append('')
-
-        # run commands in a block so we can redirect stdout to stderr
-        # (e.g. to catch errors from compileall). See #370
-        out.append('{')
-
-        # download files
-        out.append('  # download files and mark them executable')
+        out.extend(
+            (
+                '# store $PWD',
+                '__mrjob_PWD=$PWD',
+                '',
+                'if [ $__mrjob_PWD = "/" ]; then',
+                '  __mrjob_PWD=""',
+                'fi',
+                '',
+                '{',
+                '  # download files and mark them executable',
+            )
+        )
 
         cp_to_local = self._cp_to_local_cmd()
 
@@ -275,20 +270,24 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
         for name, path in sorted(
                 self._bootstrap_dir_mgr.name_to_path('file').items()):
             uri = self._upload_mgr.uri(path)
-            out.append('  %s %s $__mrjob_PWD/%s' %
-                       (cp_to_local, pipes.quote(uri), pipes.quote(name)))
-            # imitate Hadoop Distributed Cache (see #1602)
-            out.append('  chmod u+rx $__mrjob_PWD/%s' % pipes.quote(name))
-            out.append('')
+            out.extend(
+                (
+                    f'  {cp_to_local} {pipes.quote(uri)} $__mrjob_PWD/{pipes.quote(name)}',
+                    f'  chmod u+rx $__mrjob_PWD/{pipes.quote(name)}',
+                    '',
+                )
+            )
 
-        # download and unarchive archives
-        archive_names_and_paths = sorted(
-            self._bootstrap_dir_mgr.name_to_path('archive').items())
-        if archive_names_and_paths:
-            # make tmp dir if needed
-            out.append('  # download and unpack archives')
-            out.append('  __mrjob_TMP=$(mktemp -d)')
-            out.append('')
+        if archive_names_and_paths := sorted(
+            self._bootstrap_dir_mgr.name_to_path('archive').items()
+        ):
+            out.extend(
+                (
+                    '  # download and unpack archives',
+                    '  __mrjob_TMP=$(mktemp -d)',
+                    '',
+                )
+            )
 
             for name, path in archive_names_and_paths:
                 uri = self._upload_mgr.uri(path)
@@ -297,21 +296,21 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
                     'archive_file', path)
 
                 # copy file to tmp dir
-                quoted_archive_path = '$__mrjob_TMP/%s' % pipes.quote(
-                    archive_file_name)
+                quoted_archive_path = f'$__mrjob_TMP/{pipes.quote(archive_file_name)}'
 
-                out.append('  %s %s %s' % (
-                    cp_to_local, pipes.quote(uri), quoted_archive_path))
-
-                out.append('  ' + _unarchive_cmd(path) % dict(
-                    file=quoted_archive_path,
-                    dir='$__mrjob_PWD/' + pipes.quote(name)))
-
-                # imitate Hadoop Distributed Cache (see #1602)
-                out.append(
-                    '  chmod u+rx -R $__mrjob_PWD/%s' % pipes.quote(name))
-
-                out.append('')
+                out.extend(
+                    (
+                        f'  {cp_to_local} {pipes.quote(uri)} {quoted_archive_path}',
+                        '  '
+                        + _unarchive_cmd(path)
+                        % dict(
+                            file=quoted_archive_path,
+                            dir=f'$__mrjob_PWD/{pipes.quote(name)}',
+                        ),
+                        f'  chmod u+rx -R $__mrjob_PWD/{pipes.quote(name)}',
+                        '',
+                    )
+                )
 
         # run bootstrap commands
         out.append('  # bootstrap commands')
@@ -341,14 +340,11 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
     def _start_of_sh_script(self):
         """Return a list of lines (without trailing newlines) containing the
         shell script shebang and pre-commands."""
-        out = []
-
         # shebang
         sh_bin = self._sh_bin()
         if not sh_bin[0].startswith('/'):
             sh_bin = ['/usr/bin/env'] + sh_bin
-        out.append('#!' + cmd_line(sh_bin))
-
+        out = [f'#!{cmd_line(sh_bin)}']
         # hook for 'set -e', etc. (see #1549)
         out.extend(self._sh_pre_commands())
 
@@ -393,7 +389,7 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
     def _launch_ssh_proc(self, args):
         """The command used to create a :py:class:`subprocess.Popen` to
         run the SSH tunnel. You usually don't need to redefine this."""
-        log.debug('> %s' % cmd_line(args))
+        log.debug(f'> {cmd_line(args)}')
         return Popen(args, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
     def _ssh_launch_wait_secs(self):
@@ -419,10 +415,9 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
             self._ssh_proc.poll()
             if self._ssh_proc.returncode is None:
                 return
-            else:
-                log.warning('  Oops, ssh subprocess exited with return code'
-                            ' %d, restarting...' % self._ssh_proc.returncode)
-                self._ssh_proc = None
+            log.warning('  Oops, ssh subprocess exited with return code'
+                        ' %d, restarting...' % self._ssh_proc.returncode)
+            self._ssh_proc = None
 
         tunnel_config = self._ssh_tunnel_config()
 
@@ -459,28 +454,26 @@ class HadoopInTheCloudJobRunner(MRJobBinRunner):
                     ssh_proc.stderr.close()
 
         if self._ssh_proc:
-            if self._opts['ssh_tunnel_is_open']:
-                bind_host = socket.getfqdn()
-            else:
-                bind_host = 'localhost'
+            bind_host = (
+                socket.getfqdn()
+                if self._opts['ssh_tunnel_is_open']
+                else 'localhost'
+            )
+
             self._ssh_tunnel_url = 'http://%s:%d%s' % (
                 bind_host, bind_port, tunnel_config['path'])
-            log.info('  Connect to %s at: %s' % (
-                tunnel_config['name'], self._ssh_tunnel_url))
+            log.info(f"  Connect to {tunnel_config['name']} at: {self._ssh_tunnel_url}")
 
+        elif popen_exception:
+            # this only happens if the ssh binary is not present
+            # or not executable (so tunnel_config and the args to the
+            # ssh binary don't matter)
+            log.warning(
+                "    Couldn't open SSH tunnel: %s" % popen_exception)
+            self._give_up_on_ssh_tunnel = True
+            return
         else:
-            if popen_exception:
-                # this only happens if the ssh binary is not present
-                # or not executable (so tunnel_config and the args to the
-                # ssh binary don't matter)
-                log.warning(
-                    "    Couldn't open SSH tunnel: %s" % popen_exception)
-                self._give_up_on_ssh_tunnel = True
-                return
-            else:
-                log.warning(
-                    '    Failed to open ssh tunnel to %s' %
-                    tunnel_config['name'])
+            log.warning(f"    Failed to open ssh tunnel to {tunnel_config['name']}")
 
     def _kill_ssh_tunnel(self):
         """Send SIGKILL to SSH tunnel, if it's running."""

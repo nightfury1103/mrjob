@@ -364,7 +364,7 @@ class HadoopLogDirsTestCase(SandboxedTestCase):
             return self.mock_hadoop_version
 
         def mock_hadoop_dirs_method():
-            return (d for d in self.mock_hadoop_dirs)
+            return iter(self.mock_hadoop_dirs)
 
         self.start(patch('mrjob.hadoop.HadoopJobRunner.get_hadoop_version',
                          side_effect=mock_get_hadoop_version))
@@ -554,7 +554,7 @@ class StreamTaskLogDirsTestCase(StreamingLogDirsTestCase):
 
         results = self.runner._stream_task_log_dirs(output_dir=output_dir)
 
-        self.assertEqual(next(results), [output_dir + '/userlogs'])
+        self.assertEqual(next(results), [f'{output_dir}/userlogs'])
 
         self.runner._hadoop_log_dirs.assert_called_with(output_dir=output_dir)
 
@@ -808,11 +808,13 @@ class StreamingArgsTestCase(EmptyMrjobConfTestCase):
 
         self.assertEqual(
             self.runner._args_for_streaming_step(0),
-            (self.BASIC_HADOOP_ARGS +
-             ['-D', 'mapreduce.job.reduces=0'] +
-             self.BASIC_JOB_ARGS + [
-                 '-mapper',
-                 PYTHON_BIN + ' my_job.py --step-num=0 --mapper']))
+            (
+                self.BASIC_HADOOP_ARGS
+                + ['-D', 'mapreduce.job.reduces=0']
+                + self.BASIC_JOB_ARGS
+                + ['-mapper', f'{PYTHON_BIN} my_job.py --step-num=0 --mapper']
+            ),
+        )
 
     def test_basic_mapper_pre_yarn(self):
         # use a different jobconf (-D) on pre-YARN
@@ -830,11 +832,13 @@ class StreamingArgsTestCase(EmptyMrjobConfTestCase):
 
         self.assertEqual(
             self.runner._args_for_streaming_step(0),
-            (self.BASIC_HADOOP_ARGS +
-             ['-D', 'mapred.reduce.tasks=0'] +
-             self.BASIC_JOB_ARGS + [
-                 '-mapper',
-                 PYTHON_BIN + ' my_job.py --step-num=0 --mapper']))
+            (
+                self.BASIC_HADOOP_ARGS
+                + ['-D', 'mapred.reduce.tasks=0']
+                + self.BASIC_JOB_ARGS
+                + ['-mapper', f'{PYTHON_BIN} my_job.py --step-num=0 --mapper']
+            ),
+        )
 
     def test_basic_reducer(self):
         self.runner._steps = [
@@ -848,11 +852,17 @@ class StreamingArgsTestCase(EmptyMrjobConfTestCase):
 
         self.assertEqual(
             self.runner._args_for_streaming_step(0),
-            (self.BASIC_HADOOP_ARGS + self.BASIC_JOB_ARGS + [
-                '-mapper',
-                'cat',
-                '-reducer',
-                PYTHON_BIN + ' my_job.py --step-num=0 --reducer']))
+            (
+                self.BASIC_HADOOP_ARGS
+                + self.BASIC_JOB_ARGS
+                + [
+                    '-mapper',
+                    'cat',
+                    '-reducer',
+                    f'{PYTHON_BIN} my_job.py --step-num=0 --reducer',
+                ]
+            ),
+        )
 
     def test_pre_filters(self):
         self.runner._steps = [
@@ -1243,9 +1253,7 @@ class SparkPyFilesTestCase(MockHadoopTestCase):
         egg1_path = self.makefile('dragon.egg')
         egg2_path = self.makefile('horton.egg')
 
-        job = MRNullSpark([
-            '-r', 'hadoop',
-            '--py-files', '%s,%s' % (egg1_path, egg2_path)])
+        job = MRNullSpark(['-r', 'hadoop', '--py-files', f'{egg1_path},{egg2_path}'])
         job.sandbox()
 
         with job.make_runner() as runner:

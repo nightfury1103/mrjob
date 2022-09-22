@@ -180,10 +180,12 @@ def _clusters_to_stats(clusters, now=None):
     * *pool_to_nih_\**: Map from pool name to normalized instance hours,
       with ``None`` for non-pooled jobs and non-:py:mod:`mrjob` jobs.
     """
-    s = {}  # stats for all clusters
+    s = {
+        'clusters': [
+            _cluster_to_full_summary(cluster, now=now) for cluster in clusters
+        ]
+    }
 
-    s['clusters'] = [_cluster_to_full_summary(cluster, now=now)
-                     for cluster in clusters]
 
     # from here on out, we only process s['clusters']
 
@@ -205,7 +207,7 @@ def _clusters_to_stats(clusters, now=None):
     # stats by date/hour
     for interval_type in ('date', 'hour'):
         for nih_type in ('nih_billed', 'nih_used', 'nih_bbnu'):
-            key = '%s_to_%s' % (interval_type, nih_type)
+            key = f'{interval_type}_to_{nih_type}'
             start_to_nih = {}
             for cs in s['clusters']:
                 for u in cs['usage']:
@@ -222,7 +224,7 @@ def _clusters_to_stats(clusters, now=None):
                 for u in cs['usage']:
                     key_to_nih.setdefault(u[key], 0.0)
                     key_to_nih[u[key]] += u[nih_type]
-            s['%s_to_%s' % (key, nih_type)] = key_to_nih
+            s[f'{key}_to_{nih_type}'] = key_to_nih
 
     # break down by job step. separate out un-pooled jobs
     for nih_type in ('nih_used', 'nih_billed', 'nih_bbnu'):
@@ -237,8 +239,8 @@ def _clusters_to_stats(clusters, now=None):
                     job_step_to_nih_no_pool.setdefault(job_step, 0.0)
                     job_step_to_nih_no_pool[job_step] += u[nih_type]
 
-            s['job_step_to_%s' % nih_type] = job_step_to_nih
-            s['job_step_to_%s_no_pool' % nih_type] = job_step_to_nih_no_pool
+            s[f'job_step_to_{nih_type}'] = job_step_to_nih
+            s[f'job_step_to_{nih_type}_no_pool'] = job_step_to_nih_no_pool
 
     # break down by pool
     for nih_type in ('nih_used', 'nih_billed', 'nih_bbnu'):
@@ -247,7 +249,7 @@ def _clusters_to_stats(clusters, now=None):
             pool_to_nih.setdefault(cs['pool'], 0.0)
             pool_to_nih[cs['pool']] += cs[nih_type]
 
-        s['pool_to_%s' % nih_type] = pool_to_nih
+        s[f'pool_to_{nih_type}'] = pool_to_nih
 
     return s
 
@@ -319,10 +321,7 @@ def _cluster_to_basic_summary(cluster, now=None):
     if now is None:
         now = _boto3_now()
 
-    bcs = {}  # basic cluster summary to fill in
-
-    bcs['id'] = cluster['Id']
-    bcs['name'] = cluster['Name']
+    bcs = {'id': cluster['Id'], 'name': cluster['Name']}
 
     Status = cluster['Status']
     Timeline = Status.get('Timeline', {})
@@ -342,8 +341,7 @@ def _cluster_to_basic_summary(cluster, now=None):
 
     bcs['pool'] = _pool_name(cluster)
 
-    m = _JOB_KEY_RE.match(bcs['name'] or '')
-    if m:
+    if m := _JOB_KEY_RE.match(bcs['name'] or ''):
         bcs['label'], bcs['owner'] = m.group(1), m.group(2)
     else:
         bcs['label'], bcs['owner'] = None, None
@@ -409,17 +407,16 @@ def _cluster_to_usage_data(cluster, basic_summary=None, now=None):
     cluster_end_billing = bcs['created'] + max(
         _round_up_to_next_second(bcs['ran']), timedelta(minutes=1))
 
-    intervals = []
+    intervals = [
+        {
+            'label': bcs['label'],
+            'owner': bcs['owner'],
+            'start': bcs['created'],
+            'end': bcs['ready'] or bcs['end'] or now,
+            'step_num': None,
+        }
+    ]
 
-    # make a fake step for cluster startup and bootstrapping, so we don't
-    # consider that wasted.
-    intervals.append({
-        'label': bcs['label'],
-        'owner': bcs['owner'],
-        'start': bcs['created'],
-        'end': bcs['ready'] or bcs['end'] or now,
-        'step_num': None,
-    })
 
     for step in cluster['Steps']:
         Status = step['Status']
@@ -434,14 +431,8 @@ def _cluster_to_usage_data(cluster, basic_summary=None, now=None):
         step_end = Timeline.get('EndDateTime')
         if step_end is None:
             # step started running and was cancelled. credit it for 0 usage
-            if bcs['end']:
-                step_end = step_start
-            # step is still running
-            else:
-                step_end = now
-
-        m = _STEP_NAME_RE.match(step['Name'])
-        if m:
+            step_end = step_start if bcs['end'] else now
+        if m := _STEP_NAME_RE.match(step['Name']):
             step_label = m.group(1)
             step_owner = m.group(2)
             step_num = int(m.group(6))
@@ -469,47 +460,57 @@ def _cluster_to_usage_data(cluster, basic_summary=None, now=None):
             nih_per_sec *
             timedelta.total_seconds(interval['end'] - interval['start']))
 
-        interval['date_to_nih_used'] = dict(
-            (d, nih_per_sec * secs)
-            for d, secs
-            in _subdivide_interval_by_date(interval['start'],
-                                           interval['end']).items())
+        interval['date_to_nih_used'] = {
+            d: nih_per_sec * secs
+            for d, secs in _subdivide_interval_by_date(
+                interval['start'], interval['end']
+            ).items()
+        }
 
-        interval['hour_to_nih_used'] = dict(
-            (d, nih_per_sec * secs)
-            for d, secs
-            in _subdivide_interval_by_hour(interval['start'],
-                                           interval['end']).items())
+
+        interval['hour_to_nih_used'] = {
+            d: nih_per_sec * secs
+            for d, secs in _subdivide_interval_by_hour(
+                interval['start'], interval['end']
+            ).items()
+        }
+
 
         interval['nih_billed'] = (
             nih_per_sec * timedelta.total_seconds(
                 interval['end_billing'] - interval['start']))
 
-        interval['date_to_nih_billed'] = dict(
-            (d, nih_per_sec * secs)
-            for d, secs
-            in _subdivide_interval_by_date(interval['start'],
-                                           interval['end_billing']).items())
+        interval['date_to_nih_billed'] = {
+            d: nih_per_sec * secs
+            for d, secs in _subdivide_interval_by_date(
+                interval['start'], interval['end_billing']
+            ).items()
+        }
 
-        interval['hour_to_nih_billed'] = dict(
-            (d, nih_per_sec * secs)
-            for d, secs
-            in _subdivide_interval_by_hour(interval['start'],
-                                           interval['end_billing']).items())
+
+        interval['hour_to_nih_billed'] = {
+            d: nih_per_sec * secs
+            for d, secs in _subdivide_interval_by_hour(
+                interval['start'], interval['end_billing']
+            ).items()
+        }
+
 
         # time billed but not used
         interval['nih_bbnu'] = interval['nih_billed'] - interval['nih_used']
 
         interval['date_to_nih_bbnu'] = {}
         for d, nih_billed in interval['date_to_nih_billed'].items():
-            nih_bbnu = nih_billed - interval['date_to_nih_used'].get(d, 0.0)
-            if nih_bbnu:
+            if nih_bbnu := nih_billed - interval['date_to_nih_used'].get(
+                d, 0.0
+            ):
                 interval['date_to_nih_bbnu'][d] = nih_bbnu
 
         interval['hour_to_nih_bbnu'] = {}
         for d, nih_billed in interval['hour_to_nih_billed'].items():
-            nih_bbnu = nih_billed - interval['hour_to_nih_used'].get(d, 0.0)
-            if nih_bbnu:
+            if nih_bbnu := nih_billed - interval['hour_to_nih_used'].get(
+                d, 0.0
+            ):
                 interval['hour_to_nih_bbnu'][d] = nih_bbnu
 
     return intervals
@@ -524,11 +525,16 @@ def _subdivide_interval_by_date(start, end):
     if start.date() == end.date():
         date_to_secs = {start.date(): timedelta.total_seconds(end - start)}
     else:
-        date_to_secs = {}
+        date_to_secs = {
+            start.date(): timedelta.total_seconds(
+                datetime(
+                    start.year, start.month, start.day, tzinfo=start.tzinfo
+                )
+                + timedelta(days=1)
+                - start
+            )
+        }
 
-        date_to_secs[start.date()] = timedelta.total_seconds(
-            datetime(start.year, start.month, start.day, tzinfo=start.tzinfo) +
-            timedelta(days=1) - start)
 
         date_to_secs[end.date()] = timedelta.total_seconds(
             end - datetime(end.year, end.month, end.day, tzinfo=end.tzinfo))
@@ -540,8 +546,7 @@ def _subdivide_interval_by_date(start, end):
             cur_date += timedelta(days=1)
 
     # remove zeros
-    date_to_secs = dict(
-        (d, secs) for d, secs in date_to_secs.items() if secs)
+    date_to_secs = {d: secs for d, secs in date_to_secs.items() if secs}
 
     return date_to_secs
 
@@ -559,10 +564,12 @@ def _subdivide_interval_by_hour(start, end):
     if start_hour == end_hour:
         hour_to_secs = {start_hour: timedelta.total_seconds(end - start)}
     else:
-        hour_to_secs = {}
+        hour_to_secs = {
+            start_hour: timedelta.total_seconds(
+                start_hour + timedelta(hours=1) - start
+            )
+        }
 
-        hour_to_secs[start_hour] = timedelta.total_seconds(
-            start_hour + timedelta(hours=1) - start)
 
         hour_to_secs[end_hour] = timedelta.total_seconds(end - end_hour)
 
@@ -574,8 +581,7 @@ def _subdivide_interval_by_hour(start, end):
             cur_hour += timedelta(hours=1)
 
     # remove zeros
-    hour_to_secs = dict(
-        (h, secs) for h, secs in hour_to_secs.items() if secs)
+    hour_to_secs = {h: secs for h, secs in hour_to_secs.items() if secs}
 
     return hour_to_secs
 
@@ -644,8 +650,8 @@ def _print_report(stats, now=None):
     print('* All times are in UTC.')
     print()
 
-    print('Min create time: %s' % min(cs['created'] for cs in s['clusters']))
-    print('Max create time: %s' % max(cs['created'] for cs in s['clusters']))
+    print(f"Min create time: {min(cs['created'] for cs in s['clusters'])}")
+    print(f"Max create time: {max(cs['created'] for cs in s['clusters'])}")
     print('   Current time: %s' % now.replace(microsecond=0))
     print()
 
@@ -802,18 +808,12 @@ def _print_report(stats, now=None):
 def _percent(x, total, default=0.0):
     """Return what percentage *x* is of *total*, or *default* if
     *total* is zero."""
-    if total:
-        return 100.0 * x / total
-    else:
-        return default
+    return 100.0 * x / total if total else default
 
 
 def _round_up_to_next_second(td):
     """Round up to the next second because that's how EMR bills."""
-    if td.microseconds:
-        return strip_microseconds(td) + timedelta(seconds=1)
-    else:
-        return td
+    return strip_microseconds(td) + timedelta(seconds=1) if td.microseconds else td
 
 
 if __name__ == '__main__':

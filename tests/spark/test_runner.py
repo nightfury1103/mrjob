@@ -179,16 +179,13 @@ class SparkPyFilesTestCase(MockFilesystemsTestCase):
         egg1_path = self.makefile('dragon.egg')
         egg2_path = self.makefile('horton.egg')
 
-        job = MRNullSpark([
-            '-r', 'spark',
-            '--py-files', '%s,%s' % (egg1_path, egg2_path)])
+        job = MRNullSpark(['-r', 'spark', '--py-files', f'{egg1_path},{egg2_path}'])
         job.sandbox()
 
         with job.make_runner() as runner:
             runner.run()
 
-            py_files_arg = '%s,%s,%s' % (
-                egg1_path, egg2_path, runner._mrjob_zip_path)
+            py_files_arg = f'{egg1_path},{egg2_path},{runner._mrjob_zip_path}'
             self.assertIn(py_files_arg, runner._spark_submit_args(0))
 
 
@@ -273,10 +270,17 @@ class SparkWorkingDirTestCase(MockFilesystemsTestCase):
 
         # use _LOCAL_CLUSTER_MASTER because the default master (local[*])
         # doesn't have a working directory
-        job = MRSparkOSWalk(['-r', 'spark',
-                             '--spark-master', _LOCAL_CLUSTER_MASTER,
-                             '--files',
-                             '%s#ghoti,%s' % (fish_path, fowl_path)])
+        job = MRSparkOSWalk(
+            [
+                '-r',
+                'spark',
+                '--spark-master',
+                _LOCAL_CLUSTER_MASTER,
+                '--files',
+                f'{fish_path}#ghoti,{fowl_path}',
+            ]
+        )
+
         job.sandbox()
 
         file_sizes = {}
@@ -319,12 +323,19 @@ class SparkWorkingDirTestCase(MockFilesystemsTestCase):
             'mrjob.bin.MRJobBinRunner._run_spark_submit',
             return_value=(0, {})))
 
-        job = MRSparkOSWalk(['-r', 'spark',
-                             '--spark-master', 'mesos://host:9999',
-                             '--spark-tmp-dir', 's3://walrus/tmp',
-                             '--files',
-                             ('s3://walrus/fish#ghoti,s3://walrus/fowl,%s' %
-                              foe_path)])
+        job = MRSparkOSWalk(
+            [
+                '-r',
+                'spark',
+                '--spark-master',
+                'mesos://host:9999',
+                '--spark-tmp-dir',
+                's3://walrus/tmp',
+                '--files',
+                f's3://walrus/fish#ghoti,s3://walrus/fowl,{foe_path}',
+            ]
+        )
+
         job.sandbox()
 
         with job.make_runner() as runner:
@@ -762,9 +773,7 @@ class EmulateMapInputFileTestCase(SandboxedTestCase):
 
             output = dict(job.parse_output(runner.cat_output()))
 
-            self.assertEqual(
-                output,
-                {'file://' + two_lines_path: 2})
+            self.assertEqual(output, {f'file://{two_lines_path}': 2})
 
     def test_two_files(self):
         two_lines_path = self.makefile('two_lines', b'line\nother line\n')
@@ -781,8 +790,8 @@ class EmulateMapInputFileTestCase(SandboxedTestCase):
 
             self.assertEqual(
                 output,
-                {'file://' + two_lines_path: 2,
-                 'file://' + three_lines_path: 3})
+                {f'file://{two_lines_path}': 2, f'file://{three_lines_path}': 3},
+            )
 
     def test_input_dir(self):
         input_dir = self.makedirs('input')
@@ -801,8 +810,8 @@ class EmulateMapInputFileTestCase(SandboxedTestCase):
 
             self.assertEqual(
                 output,
-                {'file://' + two_lines_path: 2,
-                 'file://' + three_lines_path: 3})
+                {f'file://{two_lines_path}': 2, f'file://{three_lines_path}': 3},
+            )
 
     def test_mapper_init(self):
         two_lines_path = self.makefile('two_lines', b'line\nother line\n')
@@ -817,8 +826,8 @@ class EmulateMapInputFileTestCase(SandboxedTestCase):
             output = dict(job.parse_output(runner.cat_output()))
 
             self.assertEqual(
-                output['mapreduce.map.input.file'],
-                'file://' + two_lines_path)
+                output['mapreduce.map.input.file'], f'file://{two_lines_path}'
+            )
 
     def test_empty_file(self):
         two_lines_path = self.makefile('two_lines', b'line\nother line\n')
@@ -838,7 +847,7 @@ class EmulateMapInputFileTestCase(SandboxedTestCase):
             # ideally, no_lines_path would appear too, but what we care
             # about is that we don't get a crash from trying to read
             # the "first" line of the file
-            self.assertEqual(paths, ['file://' + two_lines_path])
+            self.assertEqual(paths, [f'file://{two_lines_path}'])
 
     def test_second_mapper(self):
         # we have to run the initial mapper somewhat differently in order
@@ -875,9 +884,7 @@ class EmulateMapInputFileTestCase(SandboxedTestCase):
 
             output = dict(job.parse_output(runner.cat_output()))
 
-            self.assertEqual(
-                output,
-                {'file://' + two_lines_path: 2})
+            self.assertEqual(output, {f'file://{two_lines_path}': 2})
 
     def test_override_emulate_map_input_file_in_conf(self):
         self.start(mrjob_conf_patcher(

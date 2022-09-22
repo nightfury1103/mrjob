@@ -49,8 +49,7 @@ def _parse_spark_log_from_log4j_records(records):
     for record in records:
         message = record['message']
 
-        m = _SUBMITTED_APPLICATION_RE.match(message)
-        if m:
+        if m := _SUBMITTED_APPLICATION_RE.match(message):
             # need this on YARN or we won't be able to find container logs
             result['application_id'] = m.group('application_id')
             continue
@@ -90,7 +89,7 @@ def _interpret_spark_logs(fs, matches, partial=True, log_callback=None):
 
         interpretation = _parse_spark_log(_cat_log_lines(fs, path))
 
-        result.update(interpretation)
+        result |= interpretation
         # don't _add_implied_job_id() because it doesn't work that way on Spark
 
         for error in interpretation.get('errors') or ():

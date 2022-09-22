@@ -78,7 +78,7 @@ class MRSparkMostUsedWord(MRJob):
         stop_words_path = self.options.stop_words_file or 'stop_words.txt'
 
         with open(stop_words_path) as f:
-            return set(line.strip() for line in f)
+            return {line.strip() for line in f}
 
 
 if __name__ == '__main__':

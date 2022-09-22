@@ -62,10 +62,7 @@ def standardize_phone_number(number):
             number = number[:-1]
         if number[0] not in '0123456789':
             number = number[1:]
-    if len(number) <= 10:
-        return "+1" + number
-    else:
-        return "+" + number
+    return f"+1{number}" if len(number) <= 10 else f"+{number}"
 
 
 class MRPhoneToURL(MRJob):

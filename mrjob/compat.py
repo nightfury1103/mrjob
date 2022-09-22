@@ -612,12 +612,14 @@ def jobconf_from_dict(jobconf, name, default=None):
     if name in jobconf:
         return jobconf[name]
 
-    # try alternatives (arbitrary order)
-    for alternative in _JOBCONF_MAP.get(name, {}).values():
-        if alternative in jobconf:
-            return jobconf[alternative]
-
-    return default
+    return next(
+        (
+            jobconf[alternative]
+            for alternative in _JOBCONF_MAP.get(name, {}).values()
+            if alternative in jobconf
+        ),
+        default,
+    )
 
 
 def map_version(version, version_map):
@@ -647,11 +649,14 @@ def map_version(version, version_map):
 
     req_version = LooseVersion(version)
 
-    for min_version, value in reversed(version_map):
-        if req_version >= min_version:
-            return value
-    else:
-        return version_map[0][1]
+    return next(
+        (
+            value
+            for min_version, value in reversed(version_map)
+            if req_version >= min_version
+        ),
+        version_map[0][1],
+    )
 
 
 def translate_jobconf(variable, version):
@@ -704,13 +709,21 @@ def translate_jobconf_dict(jobconf, hadoop_version=None):
                 translation_warnings[variable] = variant
 
     if translation_warnings:
-        log.warning("Detected hadoop configuration property names that"
-                    " do not match hadoop version %s:"
-                    "\nThe have been translated as follows\n %s",
-                    hadoop_version,
-                    '\n'.join([
-                        "%s: %s" % (variable, variant) for variable, variant
-                        in sorted(translation_warnings.items())]))
+        log.warning(
+            "Detected hadoop configuration property names that"
+            " do not match hadoop version %s:"
+            "\nThe have been translated as follows\n %s",
+            hadoop_version,
+            '\n'.join(
+                [
+                    f"{variable}: {variant}"
+                    for variable, variant in sorted(
+                        translation_warnings.items()
+                    )
+                ]
+            ),
+        )
+
 
     return translated_jobconf
 

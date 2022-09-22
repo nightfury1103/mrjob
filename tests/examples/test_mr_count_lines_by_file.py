@@ -29,8 +29,5 @@ class MRCountLinesByFileTestCase(SandboxedTestCase):
 
         self.assertEqual(
             run_job(MRCountLinesByFile([cat_file, dog_file, empty_file])),
-            {
-                'file://' + cat_file: 1,
-                'file://' + dog_file: 2,
-            }
+            {f'file://{cat_file}': 1, f'file://{dog_file}': 2},
         )

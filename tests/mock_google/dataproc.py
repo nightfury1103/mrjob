@@ -162,7 +162,7 @@ class MockGoogleDataprocClusterClient(MockGoogleDataprocClient):
 
         # add in default disk config
         for x in ('master', 'worker', 'secondary_worker'):
-            field = x + '_config'
+            field = f'{x}_config'
             conf = getattr(cluster.config, field, None)
             if conf and str(conf):  # empty DiskConfigs are still true-ish
                 if not conf.disk_config:
@@ -232,20 +232,17 @@ class MockGoogleDataprocClusterClient(MockGoogleDataprocClient):
 
         cluster_key = (project_id, region, cluster_name)
 
-        cluster = self.mock_clusters.get(cluster_key)
-
-        if not cluster:
-            raise NotFound('Not found: Cluster ' + _cluster_path(*cluster_key))
-
-        cluster.status.state = _cluster_state_value('DELETING')
+        if cluster := self.mock_clusters.get(cluster_key):
+            cluster.status.state = _cluster_state_value('DELETING')
+        else:
+            raise NotFound(f'Not found: Cluster {_cluster_path(*cluster_key)}')
 
     def get_cluster(self, project_id, region, cluster_name):
         self._check_region_matches_endpoint(region)
 
         cluster_key = (project_id, region, cluster_name)
         if cluster_key not in self.mock_clusters:
-            raise NotFound(
-                'Not Found: Cluster ' + _cluster_path(*cluster_key))
+            raise NotFound(f'Not Found: Cluster {_cluster_path(*cluster_key)}')
 
         cluster = self.mock_clusters[cluster_key]
 
@@ -287,7 +284,7 @@ class MockGoogleDataprocJobClient(MockGoogleDataprocClient):
         # cluster must exist
         cluster_key = (project_id, region, job.placement.cluster_name)
         if cluster_key not in self.mock_clusters:
-            raise NotFound('Not Found: Cluster ' + _cluster_path(*cluster_key))
+            raise NotFound(f'Not Found: Cluster {_cluster_path(*cluster_key)}')
 
         if not job.hadoop_job:
             raise NotImplementedError('only hadoop jobs are supported')
@@ -305,8 +302,7 @@ class MockGoogleDataprocJobClient(MockGoogleDataprocClient):
         job_key = (project_id, region, job_id)
 
         if job_key in self.mock_jobs:
-            raise AlreadyExists(
-                'Already exists: Job ' + _job_path(*job_key))
+            raise AlreadyExists(f'Already exists: Job {_job_path(*job_key)}')
 
         self.mock_jobs[job_key] = job
 
@@ -320,7 +316,7 @@ class MockGoogleDataprocJobClient(MockGoogleDataprocClient):
         job = self.mock_jobs.get(job_key)
 
         if not job:
-            raise NotFound('Not found: Job ' + _job_path(*job_key))
+            raise NotFound(f'Not found: Job {_job_path(*job_key)}')
 
         result = deepcopy(job)
         self._simulate_progress(job)
@@ -377,8 +373,7 @@ class MockGoogleDataprocJobClient(MockGoogleDataprocClient):
 
 
 def _cluster_path(project_id, region, cluster_name):
-    return 'projects/%s/regions/%s/clusters/%s' % (
-        project_id, region, cluster_name)
+    return f'projects/{project_id}/regions/{region}/clusters/{cluster_name}'
 
 
 def _job_path(project_id, region, job_id):
@@ -387,19 +382,19 @@ def _job_path(project_id, region, job_id):
 
 def _fully_qualify_network_uri(uri, project_id):
     if '/' not in uri:  # just a name
-        uri = 'projects/%s/global/networks/%s' % (project_id, uri)
+        uri = f'projects/{project_id}/global/networks/{uri}'
 
     if not is_uri(uri):
-        uri = 'https://www.googleapis.com/compute/v1/' + uri
+        uri = f'https://www.googleapis.com/compute/v1/{uri}'
 
     return uri
 
 
 def _fully_qualify_subnetwork_uri(uri, project_id, region):
     if '/' not in uri:  # just a name
-        uri = 'projects/%s/%s/subnetworks/%s' % (project_id, region, uri)
+        uri = f'projects/{project_id}/{region}/subnetworks/{uri}'
 
     if not is_uri(uri):
-        uri = 'https://www.googleapis.com/compute/v1/' + uri
+        uri = f'https://www.googleapis.com/compute/v1/{uri}'
 
     return uri

@@ -39,7 +39,7 @@ class LocalFilesystem(Filesystem):
 
     def ls(self, path_glob):
         bare_path_glob = _from_file_uri(path_glob)
-        uri_scheme = path_glob[0:-len(bare_path_glob)]  # 'file:///' or ''
+        uri_scheme = path_glob[:-len(bare_path_glob)]
 
         for path in glob.glob(bare_path_glob):
             if os.path.isdir(path):
@@ -52,8 +52,7 @@ class LocalFilesystem(Filesystem):
     def _cat_file(self, path):
         path = _from_file_uri(path)
         with open(path, 'rb') as f:
-            for chunk in decompress(f, path):
-                yield chunk
+            yield from decompress(f, path)
 
     def exists(self, path_glob):
         path_glob = _from_file_uri(path_glob)
@@ -73,10 +72,10 @@ class LocalFilesystem(Filesystem):
         path_glob = _from_file_uri(path_glob)
         for path in glob.glob(path_glob):
             if os.path.isdir(path):
-                log.debug('Recursively deleting %s' % path)
+                log.debug(f'Recursively deleting {path}')
                 shutil.rmtree(path)
             else:
-                log.debug('Deleting %s' % path)
+                log.debug(f'Deleting {path}')
                 os.remove(path)
 
     def touchz(self, path):
@@ -91,10 +90,10 @@ class LocalFilesystem(Filesystem):
     def _md5sum_file(self, fileobj, block_size=(512 ** 2)):  # 256K default
         md5 = hashlib.md5()
         while True:
-            data = fileobj.read(block_size)
-            if not data:
+            if data := fileobj.read(block_size):
+                md5.update(data)
+            else:
                 break
-            md5.update(data)
         return md5.hexdigest()
 
     def md5sum(self, path):
@@ -104,10 +103,9 @@ class LocalFilesystem(Filesystem):
 
 
 def _from_file_uri(path_or_uri):
-    if is_uri(path_or_uri):
-        if path_or_uri.startswith('file:///'):
-            return path_or_uri[7:]  # keep last /
-        else:
-            raise ValueError('Not a file:/// URI')
-    else:
+    if not is_uri(path_or_uri):
         return path_or_uri
+    if path_or_uri.startswith('file:///'):
+        return path_or_uri[7:]  # keep last /
+    else:
+        raise ValueError('Not a file:/// URI')

@@ -40,8 +40,7 @@ class CatLogsTestCase(BasicTestCase):
         return list(_cat_log_lines(self.mock_fs, path))
 
     def test_yields_lines(self):
-        self.mock_fs.cat.return_value = (
-            chunk for chunk in [b'ba', b'r\nb', b'az'])
+        self.mock_fs.cat.return_value = iter([b'ba', b'r\nb', b'az'])
 
         self.assertEqual(self.cat_log('foo'), ['bar\n', 'baz'])
 
@@ -226,10 +225,7 @@ class LsLogsTestCase(BasicTestCase):
 
     def test_matcher_can_filter(self):
         def matcher(path):
-            if path.endswith('/syslog'):
-                return {}
-            else:
-                return None
+            return {} if path.endswith('/syslog') else None
 
         self.mock_matcher.side_effect = matcher
 

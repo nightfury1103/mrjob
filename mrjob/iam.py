@@ -102,7 +102,7 @@ def get_or_create_mrjob_service_role(client):
     role_name = _create_mrjob_role_with_attached_policy(
         client, _MRJOB_SERVICE_ROLE, _EMR_SERVICE_ROLE_POLICY_ARN)
 
-    log.info('Auto-created service role %s' % role_name)
+    log.info(f'Auto-created service role {role_name}')
 
     return role_name
 
@@ -130,7 +130,7 @@ def get_or_create_mrjob_instance_profile(client):
     client.add_role_to_instance_profile(InstanceProfileName=name,
                                         RoleName=name)
 
-    log.info('Auto-created instance profile %s' % name)
+    log.info(f'Auto-created instance profile {name}')
 
     return name
 
@@ -160,7 +160,7 @@ def _create_mrjob_role_with_attached_policy(client, role_document, policy_arn):
     functionality.)
     """
     # create role
-    role_name = 'mrjob-' + random_identifier()
+    role_name = f'mrjob-{random_identifier()}'
 
     client.create_role(AssumeRolePolicyDocument=json.dumps(role_document),
                        RoleName=role_name)

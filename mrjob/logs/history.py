@@ -96,16 +96,17 @@ def _match_history_log_path(path, job_id=None):
     """Yield paths/uris of all job history files in the given directories,
     optionally filtering by *job_id*.
     """
-    m = _HISTORY_LOG_PATH_RE.match(path)
-    if not m:
-        return None
+    if m := _HISTORY_LOG_PATH_RE.match(path):
+        return (
+            None
+            if job_id is not None and m.group('job_id') != job_id
+            else dict(
+                job_id=m.group('job_id'), yarn='.jhist' in m.group('suffix')
+            )
+        )
 
-    if not (job_id is None or m.group('job_id') == job_id):
+    else:
         return None
-
-    # TODO: couldn't manage to include .jhist in regex; an optional
-    # group has less priority than a non-greedy match, apparently
-    return dict(job_id=m.group('job_id'), yarn='.jhist' in m.group('suffix'))
 
 
 def _interpret_history_log(fs, matches):

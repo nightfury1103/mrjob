@@ -18,6 +18,7 @@ that mock is a library in Python 2 but built into Python 3.
 
 Also provides utility code for mocking ``sys.stdout`` and ``sys.stderr``.
 """
+
 import codecs
 import sys
 from io import BytesIO
@@ -46,10 +47,7 @@ call
 patch = mock.patch
 patch
 
-if PY2:
-    ResourceWarning = Warning
-else:
-    ResourceWarning = ResourceWarning
+ResourceWarning = Warning if PY2 else ResourceWarning
 
 
 def mock_stdout_or_stderr():

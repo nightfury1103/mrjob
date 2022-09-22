@@ -1669,14 +1669,22 @@ class BootstrapPoolMatchingTestCase(PoolMatchingBaseTestCase):
 
         cluster_id = self.make_pooled_cluster()
 
-        self.assertDoesNotJoin(cluster_id, [
-            '-r', 'emr', '-v', '--pool-clusters',
-            '--bootstrap-action', bootstrap_path + ' a b c'])
+        self.assertDoesNotJoin(
+            cluster_id,
+            [
+                '-r',
+                'emr',
+                '-v',
+                '--pool-clusters',
+                '--bootstrap-action',
+                f'{bootstrap_path} a b c',
+            ],
+        )
 
     def test_bootstrap_file_contents(self):
         story_path = self.makefile('story.txt', b'Once upon a time')
 
-        true_story = 'true %s#' % story_path
+        true_story = f'true {story_path}#'
 
         cluster_id = self.make_pooled_cluster(bootstrap=[true_story])
 
@@ -1689,7 +1697,7 @@ class BootstrapPoolMatchingTestCase(PoolMatchingBaseTestCase):
         story_2_path = self.makefile('story-2.txt', b'Once upon a time')
         self.assertNotEqual(story_2_path, story_path)
 
-        true_story_2 = 'true %s#story.txt' % story_2_path
+        true_story_2 = f'true {story_2_path}#story.txt'
 
         self.assertJoins(cluster_id, [
             '-r', 'emr', '--pool-clusters',
@@ -1713,7 +1721,7 @@ class BootstrapPoolMatchingTestCase(PoolMatchingBaseTestCase):
         story_path = make_archive(join(self.tmp_dir, 'story'),
                                   'gztar', story_dir)
 
-        true_story = 'true %s#/' % story_path
+        true_story = f'true {story_path}#/'
 
         cluster_id = self.make_pooled_cluster(bootstrap=[true_story])
 
@@ -1796,7 +1804,7 @@ class MiscPoolMatchingTestCase(PoolMatchingBaseTestCase):
                                '--pool-clusters'])
         mr_job.sandbox()
 
-        self.mock_emr_failures = set([('j-MOCKCLUSTER0', 0)])
+        self.mock_emr_failures = {('j-MOCKCLUSTER0', 0)}
 
         with mr_job.make_runner() as runner:
             self.assertIsInstance(runner, EMRJobRunner)
@@ -1820,13 +1828,13 @@ class MiscPoolMatchingTestCase(PoolMatchingBaseTestCase):
         # Issue 242: job failure shouldn't kill the pooled clusters
         cluster_id = self.make_pooled_cluster()
 
-        self.mock_emr_failures = set([(cluster_id, 0)])
+        self.mock_emr_failures = {(cluster_id, 0)}
 
         mr_job = MRTwoStepJob(['-r', 'emr', '-v',
                                '--pool-clusters'])
         mr_job.sandbox()
 
-        self.mock_emr_failures = set([('j-MOCKCLUSTER0', 0)])
+        self.mock_emr_failures = {('j-MOCKCLUSTER0', 0)}
 
         with mr_job.make_runner() as runner:
             self.assertIsInstance(runner, EMRJobRunner)
@@ -2322,7 +2330,7 @@ class PoolingRecoveryTestCase(MockBoto3TestCase):
 
         # also test reset of _hadoop_fs
         def _address_of_master(self):
-            return '%s-master' % self._cluster_id
+            return f'{self._cluster_id}-master'
 
         self.start(patch(
             'mrjob.emr.EMRJobRunner._address_of_master',
@@ -2351,8 +2359,10 @@ class PoolingRecoveryTestCase(MockBoto3TestCase):
                              [cluster_id, runner.get_cluster_id()])
 
             self.assertNotEqual(runner.fs.hadoop._hadoop_bin, [])
-            self.assertIn('hadoop@%s-master' % runner.get_cluster_id(),
-                          runner.fs.hadoop._hadoop_bin)
+            self.assertIn(
+                f'hadoop@{runner.get_cluster_id()}-master',
+                runner.fs.hadoop._hadoop_bin,
+            )
 
     def test_join_pooled_cluster_after_self_termination(self):
         # cluster 1 should be preferable
@@ -2442,7 +2452,7 @@ class PoolingRecoveryTestCase(MockBoto3TestCase):
 
     def test_dont_recover_from_step_failure(self):
         cluster_id = self.make_pooled_cluster()
-        self.mock_emr_failures = set([(cluster_id, 0)])
+        self.mock_emr_failures = {(cluster_id, 0)}
 
         job = MRTwoStepJob(['-r', 'emr'])
         job.sandbox()

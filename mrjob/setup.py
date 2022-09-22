@@ -126,13 +126,13 @@ def parse_setup_cmd(cmd):
     tokens = []
 
     for m in _SETUP_CMD_RE.finditer(cmd):
-        keep_as_is = (m.group('single_quoted') or
-                      m.group('double_quoted') or
-                      m.group('unquoted') or
-                      m.group('whitespace') or
-                      m.group('colon_or_equals'))
-
-        if keep_as_is:
+        if keep_as_is := (
+            m.group('single_quoted')
+            or m.group('double_quoted')
+            or m.group('unquoted')
+            or m.group('whitespace')
+            or m.group('colon_or_equals')
+        ):
             if tokens and isinstance(tokens[-1], string_types):
                 tokens[-1] += keep_as_is
             else:
@@ -208,20 +208,20 @@ def parse_legacy_hash_path(type, path, must_name=None):
         # allow a slash after the name of an archive or dir because that's
         # the new-way of specifying archive paths
         if type in ('archive', 'dir'):
-            name = name.rstrip('/' + os.sep)
+            name = name.rstrip(f'/{os.sep}')
 
         if '/' in name or '#' in name:
             raise ValueError(
                 'Bad path %r; name must not contain # or /' % (path,))
+    elif must_name:
+        name = (
+            os.path.basename(path.rstrip(f'/{os.sep}'))
+            if type == 'dir'
+            else os.path.basename(path)
+        )
+
     else:
-        if must_name:
-            if type == 'dir':
-                # handle trailing slash on directory names
-                name = os.path.basename(path.rstrip('/' + os.sep))
-            else:
-                name = os.path.basename(path)
-        else:
-            name = None
+        name = None
 
     if not path:
         raise ValueError('Path may not be empty!')
@@ -257,7 +257,7 @@ def name_uniquely(path, names_taken=(), proposed_name=None, unhide=False,
     >>> name_uniquely('bar.tar.gz', {'bar'}, strip_ext=True)
     'bar-1'
     """
-    filename = proposed_name or os.path.basename(path.rstrip('/' + os.sep))
+    filename = proposed_name or os.path.basename(path.rstrip(f'/{os.sep}'))
     ext = file_ext(filename)
     prefix = filename[:-len(ext) or None]
 
@@ -277,12 +277,7 @@ def name_uniquely(path, names_taken=(), proposed_name=None, unhide=False,
 
     # add 1, 2, etc. to the name until it's not taken
     for i in itertools.count(1):
-        if prefix:
-            name = '%s-%d%s' % (prefix, i, ext)
-        else:
-            # if no prefix is left (due to empty filename or unhiding)
-            # just use numbers; don't start filenames with '-'
-            name = '%d%s' % (i, ext)
+        name = '%s-%d%s' % (prefix, i, ext) if prefix else '%d%s' % (i, ext)
         if name not in names_taken:
             return name
 
@@ -343,8 +338,7 @@ class UploadDirManager(object):
     def path_to_uri(self):
         """Get a map from path to URI for all paths that were added,
         so we can figure out which files we need to upload."""
-        return dict((path, self.uri(path))
-                    for path in self._path_to_name)
+        return {path: self.uri(path) for path in self._path_to_name}
 
 
 class WorkingDirManager(object):
@@ -482,18 +476,20 @@ class WorkingDirManager(object):
             if type is None or path_type == type:
                 self.name(path_type, path)
 
-        return dict((name, typed_path[1])
-                    for name, typed_path
-                    in self._name_to_typed_path.items()
-                    if (type is None or typed_path[0] == type))
+        return {
+            name: typed_path[1]
+            for name, typed_path in self._name_to_typed_path.items()
+            if (type is None or typed_path[0] == type)
+        }
 
     def paths(self, type=None):
         """Get a set of all paths tracked by this WorkingDirManager."""
-        paths = set()
+        paths = {
+            path
+            for path_type, path in self._typed_path_to_auto_name
+            if type is None or path_type == type
+        }
 
-        for path_type, path in self._typed_path_to_auto_name:
-            if type is None or path_type == type:
-                paths.add(path)
 
         for path_type, path in self._name_to_typed_path.values():
             if type is None or path_type == type:
